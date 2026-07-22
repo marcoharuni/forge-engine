@@ -7,4 +7,3 @@ SequenceId = NewType("SequenceId", str)
 WorkerId = NewType("WorkerId", str)
 
 # TODO: Add tensor-independent protocol and lifecycle types as interfaces stabilize.
-

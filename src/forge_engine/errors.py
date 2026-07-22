@@ -10,4 +10,3 @@ class ConfigurationError(ForgeEngineError):
 
 
 # TODO: Add narrow error types as engine boundaries are implemented.
-

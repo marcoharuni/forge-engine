@@ -10,4 +10,3 @@ pytestmark = pytest.mark.skip(reason="block pool behavior is not implemented")
 def test_placeholder() -> None:
     """Reserve the test module without claiming implemented behavior."""
     raise AssertionError("skipped placeholder must not execute")
-
