@@ -1,0 +1,73 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 25,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "cpu",
+      "displayName": "CPU-only development",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/../.tmp/native-cpu",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "FORGE_ENABLE_CUDA": "OFF"
+      }
+    },
+    {
+      "name": "cuda-sm75",
+      "inherits": "cpu",
+      "displayName": "CUDA SM75 (T4)",
+      "binaryDir": "${sourceDir}/../.tmp/native-sm75",
+      "cacheVariables": {
+        "FORGE_ENABLE_CUDA": "ON",
+        "CMAKE_CUDA_ARCHITECTURES": "75"
+      }
+    },
+    {
+      "name": "cuda-sm80",
+      "inherits": "cuda-sm75",
+      "displayName": "CUDA SM80",
+      "binaryDir": "${sourceDir}/../.tmp/native-sm80",
+      "cacheVariables": {
+        "CMAKE_CUDA_ARCHITECTURES": "80"
+      }
+    },
+    {
+      "name": "cuda-sm89",
+      "inherits": "cuda-sm75",
+      "displayName": "CUDA SM89",
+      "binaryDir": "${sourceDir}/../.tmp/native-sm89",
+      "cacheVariables": {
+        "CMAKE_CUDA_ARCHITECTURES": "89"
+      }
+    },
+    {
+      "name": "cuda-sm90",
+      "inherits": "cuda-sm75",
+      "displayName": "CUDA SM90",
+      "binaryDir": "${sourceDir}/../.tmp/native-sm90",
+      "cacheVariables": {
+        "CMAKE_CUDA_ARCHITECTURES": "90"
+      }
+    },
+    {
+      "name": "cuda-sm100",
+      "inherits": "cuda-sm75",
+      "displayName": "CUDA SM100",
+      "binaryDir": "${sourceDir}/../.tmp/native-sm100",
+      "cacheVariables": {
+        "CMAKE_CUDA_ARCHITECTURES": "100"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "cpu",
+      "configurePreset": "cpu"
+    }
+  ]
+}
+

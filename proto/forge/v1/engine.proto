@@ -1,0 +1,22 @@
+syntax = "proto3";
+
+package forge.v1;
+
+// Minimal request accepted by the future Python engine worker.
+message EngineRequest {
+  string request_id = 1;
+  string model = 2;
+  string prompt = 3;
+}
+
+// Minimal incremental output emitted by the future engine worker.
+message EngineOutput {
+  string request_id = 1;
+  string text_delta = 2;
+  bool finished = 3;
+}
+
+service EngineService {
+  rpc Generate(EngineRequest) returns (stream EngineOutput);
+}
+

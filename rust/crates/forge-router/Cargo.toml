@@ -1,0 +1,13 @@
+[package]
+name = "forge-router"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Future worker selection, routing, and admission boundaries."
+publish = false
+
+[lints]
+workspace = true
+

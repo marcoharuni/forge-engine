@@ -1,0 +1,13 @@
+[package]
+name = "forge-protocol"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Versioned protocol boundary shared by Rust services and Python workers."
+publish = false
+
+[lints]
+workspace = true
+

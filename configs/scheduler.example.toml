@@ -1,0 +1,8 @@
+# Example continuous-batching scheduler configuration.
+[scheduler]
+max_scheduled_tokens = 4096
+max_active_sequences = 32
+prefill_chunk_size = 512
+preemption_policy = "recompute"
+queue_limit = 256
+

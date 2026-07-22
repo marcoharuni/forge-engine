@@ -1,0 +1,26 @@
+name: Bug report
+description: Report a reproducible ForgeEngine defect
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: Describe the observed and expected behavior.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction
+      description: Provide minimal steps without credentials, model weights, or private data.
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: Include OS, Python, accelerator, CUDA, and ForgeEngine revision as applicable.
+

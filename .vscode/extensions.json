@@ -1,0 +1,13 @@
+{
+  "recommendations": [
+    "charliermarsh.ruff",
+    "ms-python.python",
+    "rust-lang.rust-analyzer",
+    "ms-vscode.cmake-tools",
+    "ms-vscode.cpptools",
+    "tamasfe.even-better-toml",
+    "redhat.vscode-yaml",
+    "zxh404.vscode-proto3"
+  ]
+}
+

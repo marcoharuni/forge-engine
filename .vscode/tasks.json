@@ -1,0 +1,36 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Python: lint",
+      "type": "shell",
+      "command": "uv run ruff check . && uv run mypy src",
+      "problemMatcher": []
+    },
+    {
+      "label": "Python: test",
+      "type": "shell",
+      "command": "uv run pytest -m \"not gpu and not integration\"",
+      "problemMatcher": []
+    },
+    {
+      "label": "Rust: check",
+      "type": "shell",
+      "command": "cargo check --manifest-path rust/Cargo.toml --workspace",
+      "problemMatcher": ["$rustc"]
+    },
+    {
+      "label": "Native: configure CPU-only",
+      "type": "shell",
+      "command": "cmake -S native -B .tmp/native-build -DFORGE_ENABLE_CUDA=OFF",
+      "problemMatcher": []
+    },
+    {
+      "label": "Structure: validate Python",
+      "type": "shell",
+      "command": "uv run python -m compileall -q src tests benchmarks examples scripts",
+      "problemMatcher": []
+    }
+  ]
+}
+

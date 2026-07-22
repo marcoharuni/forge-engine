@@ -1,0 +1,20 @@
+name: GPU self-hosted validation
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  gpu-validation:
+    runs-on:
+      - self-hosted
+      - gpu
+    steps:
+      - uses: actions/checkout@v4
+      - name: Record validation scope
+        run: |
+          echo "TODO: Configure the approved CUDA environment."
+          echo "TODO: Add opt-in GPU kernel and integration validation."
+

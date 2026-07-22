@@ -1,0 +1,109 @@
+[build-system]
+requires = ["hatchling>=1.26"]
+build-backend = "hatchling.build"
+
+[project]
+name = "forge-engine"
+version = "0.0.0"
+description = "A standalone, production-oriented LLM inference engine."
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+  "numpy>=1.26",
+  "packaging>=24.0",
+  "psutil>=6.0",
+  "pydantic>=2.8",
+  "rich>=13.7",
+  "safetensors>=0.4",
+  "tokenizers>=0.20",
+  "torch>=2.4",
+  "transformers>=4.45",
+  "typer>=0.12",
+]
+
+[project.optional-dependencies]
+serve = [
+  "fastapi>=0.115",
+  "grpcio>=1.66",
+  "httpx>=0.27",
+  "opentelemetry-api>=1.27",
+  "opentelemetry-exporter-otlp>=1.27",
+  "opentelemetry-sdk>=1.27",
+  "prometheus-client>=0.21",
+  "protobuf>=5.28",
+  "uvicorn[standard]>=0.30",
+]
+gpu = ["triton>=3.0"]
+structured = ["xgrammar>=0.1"]
+cute = ["nvidia-cutlass-dsl>=4.0"]
+native = ["cmake>=3.25", "ninja>=1.11", "scikit-build-core>=0.10"]
+
+[project.scripts]
+forge-engine = "forge_engine.cli:engine_main"
+forge-serve = "forge_engine.cli:serve_main"
+forge-inspect = "forge_engine.cli:inspect_main"
+forge-memory = "forge_engine.cli:memory_main"
+forge-bench = "forge_engine.cli:bench_main"
+
+[dependency-groups]
+dev = [
+  "coverage[toml]>=7.6",
+  "hypothesis>=6.112",
+  "mypy>=1.11",
+  "pre-commit>=3.8",
+  "pytest>=8.3",
+  "pytest-asyncio>=0.24",
+  "pytest-benchmark>=5.1",
+  "ruff>=0.11",
+  "types-psutil>=6.0",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/forge_engine"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+src = ["src", "tests", "benchmarks", "examples", "scripts"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
+ignore = ["E501"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["B011"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "lf"
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+mypy_path = "src"
+packages = ["forge_engine"]
+warn_unused_configs = true
+
+[[tool.mypy.overrides]]
+module = ["torch.*", "transformers.*", "triton.*", "xgrammar.*"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+addopts = ["--strict-config", "--strict-markers", "-ra"]
+markers = [
+  "gpu: requires a supported GPU runtime",
+  "integration: exercises multiple ForgeEngine components",
+]
+
+[tool.coverage.run]
+branch = true
+source = ["forge_engine"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+fail_under = 0
+

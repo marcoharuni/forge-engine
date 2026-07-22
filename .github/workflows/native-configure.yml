@@ -1,0 +1,19 @@
+name: Native CPU-only configure
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  configure:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure without CUDA
+        run: cmake -S native -B build/native -DFORGE_ENABLE_CUDA=OFF
+

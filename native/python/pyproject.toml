@@ -1,0 +1,14 @@
+[build-system]
+requires = ["scikit-build-core>=0.10"]
+build-backend = "scikit_build_core.build"
+
+[project]
+name = "forge-engine-native"
+version = "0.0.0"
+description = "Optional native components for ForgeEngine."
+requires-python = ">=3.12"
+
+[tool.scikit-build]
+cmake.source-dir = ".."
+wheel.packages = ["src/forge_engine_native"]
+

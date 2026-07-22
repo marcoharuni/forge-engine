@@ -1,0 +1,92 @@
+# Local environments and secrets
+.venv/
+.env
+.env.*
+!.env.example
+.python-version.local
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+dist/
+build/
+site/
+
+# Rust
+target/
+rust/target/
+
+# Native and CMake
+cmake-build-*/
+**/CMakeFiles/
+**/CMakeCache.txt
+**/cmake_install.cmake
+**/Makefile.cmake
+*.o
+*.obj
+*.a
+*.lib
+*.so
+*.dylib
+*.dll
+*.cubin
+*.fatbin
+*.ptx
+
+# Generated protocols
+generated/
+**/*_pb2.py
+**/*_pb2.pyi
+**/*_pb2_grpc.py
+**/*.pb.rs
+**/*.pb.cc
+**/*.pb.h
+
+# Benchmarks, profiling, and reports
+benchmark-results/
+benchmarks/results/
+*.benchmark.json
+profiles/
+*.prof
+*.trace
+*.nsys-rep
+*.ncu-rep
+*.qdrep
+
+# Models, checkpoints, and caches
+*.safetensors
+*.bin
+*.pt
+*.pth
+*.ckpt
+*.gguf
+*.onnx
+models-cache/
+checkpoints/
+.huggingface/
+.hf_home/
+.cache/huggingface/
+hf-cache/
+huggingface-cache/
+
+# Downloaded third-party sources
+third_party/*
+!third_party/.gitkeep
+_downloads/
+
+# Editors and operating systems
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Temporary local builds
+.tmp/
