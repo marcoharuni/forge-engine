@@ -1,9 +1,0 @@
-# Example serving configuration.
-[serving]
-host = "127.0.0.1"
-port = 8000
-streaming = true
-request_timeout_seconds = 120
-metrics_enabled = true
-worker_endpoint = "http://127.0.0.1:50051"
-

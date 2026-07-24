@@ -1,9 +1,0 @@
-# Example engine configuration.
-[engine]
-model = "qwen2_5_0_5b"
-dtype = "float16"
-device = "cuda"
-attention_backend = "auto"
-max_model_length = 4096
-kv_cache_budget_gib = 12.0
-

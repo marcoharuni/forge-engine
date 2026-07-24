@@ -1,5 +1,3 @@
-"""ForgeEngine public Python package."""
+"""ForgeEngine package."""
 
-__version__ = "0.0.0"
-
-# TODO: Export the stable engine API when runtime components are implemented.
+__version__: str = "0.1.0"

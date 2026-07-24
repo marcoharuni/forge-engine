@@ -1,45 +1,67 @@
-"""Console entry-point placeholders for ForgeEngine developer and runtime commands."""
+"""ForgeEngine command-line entry point."""
 
-from collections.abc import Callable
-from typing import NoReturn
+from __future__ import annotations
 
-# TODO: Replace command placeholders after their underlying runtime interfaces exist.
+import argparse
+import sys
+from collections.abc import Sequence
 
-
-def _unimplemented(command: str) -> NoReturn:
-    """Report that a scaffolded command does not have runtime behavior yet."""
-    raise NotImplementedError(f"{command} is a scaffold; runtime behavior is not implemented")
-
-
-def engine_main() -> NoReturn:
-    """Start the future offline engine command."""
-    _unimplemented("forge-engine")
+from forge_engine.config import EngineConfig
+from forge_engine.engine import GreedyEngine
+from forge_engine.model import ChatMessage, ForgeEngineError
 
 
-def serve_main() -> NoReturn:
-    """Start the future serving command."""
-    _unimplemented("forge-serve")
+def build_parser() -> argparse.ArgumentParser:
+    """Build the ForgeEngine argument parser."""
+    parser = argparse.ArgumentParser(prog="forge-engine")
+    commands = parser.add_subparsers(dest="command", required=True)
+    chat = commands.add_parser("chat", help="start an interactive CUDA chat")
+    chat.add_argument("--max-new-tokens", type=int, default=256)
+    return parser
 
 
-def inspect_main() -> NoReturn:
-    """Start the future model inspection command."""
-    _unimplemented("forge-inspect")
+def run_chat(config: EngineConfig) -> int:
+    """Run a single-user terminal chat until end of input."""
+    engine = GreedyEngine.from_config(config)
+    messages: list[ChatMessage] = []
+
+    while True:
+        try:
+            prompt = input("You: ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print()
+            return 0
+
+        if not prompt:
+            continue
+
+        messages.append({"role": "user", "content": prompt})
+        print("ForgeEngine: ", end="", flush=True)
+        response = ""
+        for fragment in engine.stream(messages):
+            print(fragment, end="", flush=True)
+            response += fragment
+        print()
+        messages.append({"role": "assistant", "content": response})
 
 
-def memory_main() -> NoReturn:
-    """Start the future memory estimation command."""
-    _unimplemented("forge-memory")
+def main(argv: Sequence[str] | None = None) -> int:
+    """Run the requested ForgeEngine command."""
+    args = build_parser().parse_args(argv)
+
+    try:
+        if args.command == "chat":
+            return run_chat(
+                EngineConfig(
+                    max_new_tokens=args.max_new_tokens,
+                )
+            )
+    except (ForgeEngineError, ValueError) as error:
+        print(f"forge-engine: {error}", file=sys.stderr)
+        return 1
+
+    return 2
 
 
-def bench_main() -> NoReturn:
-    """Start the future benchmark command."""
-    _unimplemented("forge-bench")
-
-
-COMMANDS: dict[str, Callable[[], NoReturn]] = {
-    "engine": engine_main,
-    "serve": serve_main,
-    "inspect": inspect_main,
-    "memory": memory_main,
-    "bench": bench_main,
-}
+if __name__ == "__main__":
+    raise SystemExit(main())
