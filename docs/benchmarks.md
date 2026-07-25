@@ -1,4 +1,4 @@
-# ForgeEngine v0.1.0 release evidence
+# Benchmarks and release evidence
 
 This file separates measurements that actually ran from commands that remain
 to be run. Results are not copied from another engine or extrapolated to other
@@ -29,7 +29,7 @@ iterations, CUDA events, and an explicit synchronization:
 
 The complete latency distributions, throughput units, numerical tolerances,
 generated-code observations, and limitations are in
-[`M7_KERNEL_NOTES.md`](M7_KERNEL_NOTES.md).
+[`kernels.md`](kernels.md).
 
 ## Accepted L4 serving and client evidence
 
@@ -111,8 +111,8 @@ cargo test --locked --manifest-path rust/streamer/Cargo.toml
 cargo clippy --locked --manifest-path rust/streamer/Cargo.toml -- -D warnings
 ```
 
-`.github/workflows/ci.yml` runs those checks on Ubuntu. A workflow result is
-evidence only after the repository is pushed and the workflow itself passes.
+The repository's `CPU-safe checks` GitHub Actions workflow ran these checks on
+Ubuntu 24.04 and passed on 2026-07-25 (run `30177148761`).
 
 The release Dockerfile built successfully from
 `nvidia/cuda:13.0.3-cudnn-devel-ubuntu24.04`, installed
@@ -128,7 +128,3 @@ uv run --extra dev modal run tools/modal_docker_validate_m9.py
 
 The accepted run printed `M9_DOCKER_ACCEPTANCE=PASS`. Modal run:
 `ap-Pxmw8seSpFwN6mRvSmTyMJ`.
-
-`.github/workflows/ci.yml` is prepared, but hosted CI cannot be marked passed
-until the current uncommitted work is committed/pushed and GitHub executes the
-workflow.

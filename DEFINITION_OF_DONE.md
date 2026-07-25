@@ -45,7 +45,7 @@ ForgeEngine is complete only when every required item below is true.
 
 ## Evidence and quality
 
-- [ ] CPU-safe unit tests pass in CI.
+- [x] CPU-safe unit tests pass in CI.
 - [x] Real L4 correctness and smoke tests pass.
 - [x] Benchmarks record GPU, software versions, precision, model revision, workload, warm-up, iterations, synchronization, latency statistics, throughput, and peak memory.
 - [x] H100/B200 results are reported only when actually measured.

@@ -1,4 +1,4 @@
-# Milestone 7 kernel notes
+# Kernel implementation and evidence
 
 M7 keeps three low-level paths separate: one small Triton fusion is integrated,
 one Triton attention kernel is a restricted lab, and one CUDA C++ paged decode

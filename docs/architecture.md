@@ -1,4 +1,4 @@
-# ForgeEngine architecture
+# Architecture
 
 ForgeEngine is deliberately one process, one model, and one NVIDIA GPU. The
 HTTP event loop never calls CUDA directly: one scheduler worker owns all model
