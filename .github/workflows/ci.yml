@@ -1,0 +1,44 @@
+name: CPU-safe checks
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install locked CPU environment
+        run: uv sync --frozen --extra dev
+
+      - name: Python tests
+        run: uv run --frozen --extra dev python -m pytest -q
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy,rustfmt
+
+      - name: Rust format
+        run: cargo fmt --check --manifest-path rust/streamer/Cargo.toml
+
+      - name: Rust tests
+        run: cargo test --locked --manifest-path rust/streamer/Cargo.toml
+
+      - name: Rust lint
+        run: cargo clippy --locked --manifest-path rust/streamer/Cargo.toml -- -D warnings

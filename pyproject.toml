@@ -8,11 +8,14 @@ version = "0.1.0"
 description = "A small, readable, single-GPU inference engine for Qwen."
 readme = "README.md"
 requires-python = ">=3.11"
+license = "Apache-2.0"
 dependencies = [
+    "fastapi",
     "huggingface-hub",
     "safetensors",
     "torch",
     "transformers",
+    "uvicorn",
 ]
 
 [project.scripts]
@@ -20,8 +23,13 @@ forge-engine = "forge_engine.cli:main"
 
 [project.optional-dependencies]
 dev = [
+    "httpx",
+    "httpx2",
     "modal",
     "pytest>=8",
+]
+cute = [
+    "nvidia-cutlass-dsl[cu13]",
 ]
 
 [[tool.uv.index]]

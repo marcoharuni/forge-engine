@@ -8,6 +8,8 @@ from unittest import TestCase
 from unittest.mock import patch
 
 from forge_engine.cli import build_parser, main
+from forge_engine.config import EngineConfig
+from forge_engine.scheduler import SchedulerConfig
 
 
 class FakeEngine:
@@ -46,7 +48,7 @@ class CLITests(TestCase):
 
         with (
             patch(
-                "forge_engine.cli.GreedyEngine.from_config",
+                "forge_engine.cli.GenerationEngine.from_config",
                 return_value=engine,
             ),
             patch(
@@ -71,3 +73,40 @@ class CLITests(TestCase):
         )
         self.assertIn("ForgeEngine: First response", output.getvalue())
         self.assertIn("ForgeEngine: Second response", output.getvalue())
+
+    def test_serve_builds_engine_and_scheduler_configuration(self) -> None:
+        """One command passes bounded serving configuration to the server."""
+        with patch("forge_engine.cli.run_server") as run_server:
+            result = main(
+                [
+                    "serve",
+                    "--host",
+                    "0.0.0.0",
+                    "--port",
+                    "9000",
+                    "--max-new-tokens",
+                    "12",
+                    "--max-requests",
+                    "3",
+                    "--max-batch-size",
+                    "2",
+                    "--token-budget",
+                    "24",
+                    "--block-capacity",
+                    "128",
+                ]
+            )
+
+        self.assertEqual(result, 0)
+        run_server.assert_called_once_with(
+            EngineConfig(max_new_tokens=12),
+            SchedulerConfig(
+                max_requests=3,
+                max_batch_size=2,
+                token_budget=24,
+                block_size=16,
+                block_capacity=128,
+            ),
+            host="0.0.0.0",
+            port=9000,
+        )

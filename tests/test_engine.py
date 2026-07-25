@@ -8,8 +8,10 @@ from types import ModuleType, SimpleNamespace
 from unittest import TestCase
 from unittest.mock import patch
 
-from forge_engine.engine import GreedyEngine
+from forge_engine.cache import PagedKVBlockPool
+from forge_engine.engine import GenerationEngine
 from forge_engine.model import CUDAOutOfMemoryError
+from forge_engine.sampling import SamplingParams
 
 FAKE_LONG = object()
 FAKE_FLOAT = object()
@@ -72,6 +74,44 @@ class FakeTensor:
         """Report whether this fake uses the floating dtype marker."""
         return self.dtype is FAKE_FLOAT
 
+    def contiguous(self) -> FakeTensor:
+        """Return contiguous fake storage."""
+        return self
+
+    def is_contiguous(self) -> bool:
+        """Report contiguous fake storage."""
+        return True
+
+    def __getitem__(self, key: object) -> FakeTensor:
+        """Return a fake tensor view for cache block slicing."""
+        selectors = key if isinstance(key, tuple) else (key,)
+        shape: list[int] = []
+        for dimension, size in enumerate(self.shape):
+            selector = (
+                selectors[dimension]
+                if dimension < len(selectors)
+                else slice(None)
+            )
+            if isinstance(selector, int):
+                continue
+            if not isinstance(selector, slice):
+                raise AssertionError(
+                    f"unsupported fake selector: {selector!r}"
+                )
+            start, stop, step = selector.indices(size)
+            shape.append(len(range(start, stop, step)))
+        return FakeTensor(
+            self.token_id,
+            shape=tuple(shape),
+            dtype=self.dtype,
+            device=self.device.type,
+        )
+
+    def copy_(self, source: FakeTensor) -> FakeTensor:
+        """Accept a metadata-compatible fake tensor copy."""
+        assert self.shape == source.shape
+        return self
+
 
 class FakeLogits:
     """Logits stand-in returning a predetermined greedy token."""
@@ -89,6 +129,7 @@ class FakeLogits:
 
     def __getitem__(self, key: object) -> FakeLogits:
         """Accept last-token slicing."""
+        self.shape = (self.shape[0], self.shape[-1])
         return self
 
     def is_floating_point(self) -> bool:
@@ -204,20 +245,34 @@ def fake_torch_module(oom_error: type[BaseException] = RuntimeError) -> ModuleTy
         )
 
     def cat(tensors: tuple[FakeTensor, ...], dim: int) -> FakeTensor:
-        """Concatenate fake tensors along the sequence dimension."""
-        assert dim == 1
+        """Concatenate fake token or cache tensors."""
+        assert dim in (1, 2)
         first = tensors[0]
+        shape = list(first.shape)
+        shape[dim] = sum(tensor.shape[dim] for tensor in tensors)
         return FakeTensor(
-            shape=(
-                first.shape[0],
-                sum(tensor.shape[1] for tensor in tensors),
-            ),
+            shape=tuple(shape),
             dtype=first.dtype,
             device=first.device.type,
         )
 
+    def empty(
+        shape: tuple[int, ...],
+        *,
+        dtype: object,
+        device: object,
+    ) -> FakeTensor:
+        """Allocate fake physical KV block storage."""
+        device_type = getattr(device, "type", device)
+        return FakeTensor(
+            shape=shape,
+            dtype=dtype,
+            device=str(device_type),
+        )
+
     fake_torch.ones = ones
     fake_torch.cat = cat
+    fake_torch.empty = empty
     @contextmanager
     def inference_mode() -> object:
         yield
@@ -242,7 +297,13 @@ class EngineTests(TestCase):
         fake_torch.inference_mode = inference_mode
         tokenizer = FakeTokenizer()
         model = FakeModel()
-        engine = GreedyEngine(tokenizer, model, max_new_tokens=8)
+        pool = PagedKVBlockPool(block_size=2, capacity=8)
+        engine = GenerationEngine(
+            tokenizer,
+            model,
+            SamplingParams(max_new_tokens=8),
+            pool,
+        )
         messages = [{"role": "user", "content": "Hi"}]
 
         with patch.dict(sys.modules, {"torch": fake_torch}):
@@ -257,18 +318,23 @@ class EngineTests(TestCase):
         self.assertEqual(inference_entries, [True])
         self.assertEqual(len(model.calls), 3)
         self.assertIsNone(model.calls[0]["past_key_values"])
-        self.assertIs(
-            model.calls[1]["past_key_values"],
-            model.returned_caches[0],
+        self.assertEqual(
+            model.calls[1]["past_key_values"][0][0].shape,
+            model.returned_caches[0][0][0].shape,
         )
         self.assertTrue(model.calls[0]["use_cache"])
         self.assertEqual(model.calls[1]["input_ids"].token_id, 1)
+        self.assertEqual(pool.allocated_block_count, 0)
 
     def test_stream_adds_batch_dimension_to_one_dimensional_tokens(self) -> None:
         """A rank-one tokenizer tensor becomes one batched prompt."""
         prompt = FakeTensor(shape=(3,))
         model = FakeModel()
-        engine = GreedyEngine(FakeTokenizer(prompt), model, 1)
+        engine = GenerationEngine(
+            FakeTokenizer(prompt),
+            model,
+            SamplingParams(max_new_tokens=1),
+        )
 
         with patch.dict(sys.modules, {"torch": fake_torch_module()}):
             list(engine.stream([{"role": "user", "content": "Hi"}]))
@@ -281,7 +347,11 @@ class EngineTests(TestCase):
         """A batched tokenizer tensor keeps its batch dimension unchanged."""
         prompt = FakeTensor(shape=(1, 3))
         model = FakeModel()
-        engine = GreedyEngine(FakeTokenizer(prompt), model, 1)
+        engine = GenerationEngine(
+            FakeTokenizer(prompt),
+            model,
+            SamplingParams(max_new_tokens=1),
+        )
 
         with patch.dict(sys.modules, {"torch": fake_torch_module()}):
             list(engine.stream([{"role": "user", "content": "Hi"}]))
@@ -298,7 +368,11 @@ class EngineTests(TestCase):
             attention_mask=attention_mask,
         )
         model = FakeModel()
-        engine = GreedyEngine(FakeTokenizer(tokenizer_output), model, 2)
+        engine = GenerationEngine(
+            FakeTokenizer(tokenizer_output),
+            model,
+            SamplingParams(max_new_tokens=2),
+        )
 
         with patch.dict(sys.modules, {"torch": fake_torch_module()}):
             list(engine.stream([{"role": "user", "content": "Hi"}]))
@@ -310,10 +384,10 @@ class EngineTests(TestCase):
 
     def test_stream_rejects_unsupported_tokenizer_shape(self) -> None:
         """Tokenizer tensors outside rank one or two fail clearly."""
-        engine = GreedyEngine(
+        engine = GenerationEngine(
             FakeTokenizer(FakeTensor(shape=(1, 2, 3))),
             FakeModel(),
-            1,
+            SamplingParams(max_new_tokens=1),
         )
 
         with (
@@ -331,10 +405,10 @@ class EngineTests(TestCase):
             input_ids=FakeTensor(shape=(1, 3)),
             attention_mask=FakeTensor(shape=(1, 2)),
         )
-        engine = GreedyEngine(
+        engine = GenerationEngine(
             FakeTokenizer(tokenizer_output),
             FakeModel(),
-            1,
+            SamplingParams(max_new_tokens=1),
         )
 
         with (
@@ -357,7 +431,11 @@ class EngineTests(TestCase):
                 output.logits.device = FakeDevice("cpu")
                 return output
 
-        engine = GreedyEngine(FakeTokenizer(), CPUOutputModel(), 1)
+        engine = GenerationEngine(
+            FakeTokenizer(),
+            CPUOutputModel(),
+            SamplingParams(max_new_tokens=1),
+        )
 
         with (
             patch.dict(sys.modules, {"torch": fake_torch_module()}),
@@ -376,13 +454,100 @@ class EngineTests(TestCase):
                 output.past_key_values[0][0].shape = (1, 2, 1, 4)
                 return output
 
-        engine = GreedyEngine(FakeTokenizer(), BadCacheModel(), 1)
+        engine = GenerationEngine(
+            FakeTokenizer(),
+            BadCacheModel(),
+            SamplingParams(max_new_tokens=1),
+        )
 
         with (
             patch.dict(sys.modules, {"torch": fake_torch_module()}),
-            self.assertRaisesRegex(ValueError, "key shape is inconsistent"),
+            self.assertRaisesRegex(
+                ValueError,
+                "key/value shapes must match",
+            ),
         ):
             list(engine.stream([{"role": "user", "content": "Hi"}]))
+
+    def test_stop_string_crosses_token_boundaries(self) -> None:
+        """A stop string spanning two tokens is withheld from output."""
+        engine = GenerationEngine(
+            FakeTokenizer(),
+            FakeModel(),
+            SamplingParams(
+                max_new_tokens=8,
+                stop_strings=("lo!",),
+            ),
+        )
+
+        with patch.dict(sys.modules, {"torch": fake_torch_module()}):
+            fragments = list(
+                engine.stream([{"role": "user", "content": "Hi"}])
+            )
+
+        self.assertEqual(fragments, ["Hel"])
+
+    def test_token_limit_stops_without_an_extra_decode(self) -> None:
+        """The configured token limit avoids unnecessary model work."""
+        model = FakeModel()
+        engine = GenerationEngine(
+            FakeTokenizer(),
+            model,
+            SamplingParams(max_new_tokens=1),
+        )
+
+        with patch.dict(sys.modules, {"torch": fake_torch_module()}):
+            fragments = list(
+                engine.stream([{"role": "user", "content": "Hi"}])
+            )
+
+        self.assertEqual(fragments, ["Hello"])
+        self.assertEqual(len(model.calls), 1)
+
+    def test_stream_error_reclaims_every_paged_block(self) -> None:
+        """A decode failure releases the request's entire block table."""
+
+        class DecodeFailureModel(FakeModel):
+            """Fail after a successful prefill."""
+
+            def forward(self, **kwargs: object) -> SimpleNamespace:
+                if self.calls:
+                    raise ValueError("decode failed")
+                return super().forward(**kwargs)
+
+        pool = PagedKVBlockPool(block_size=2, capacity=8)
+        engine = GenerationEngine(
+            FakeTokenizer(),
+            DecodeFailureModel(),
+            SamplingParams(max_new_tokens=8),
+            pool,
+        )
+
+        with (
+            patch.dict(sys.modules, {"torch": fake_torch_module()}),
+            self.assertRaisesRegex(ValueError, "decode failed"),
+        ):
+            list(engine.stream([{"role": "user", "content": "Hi"}]))
+
+        self.assertEqual(pool.allocated_block_count, 0)
+
+    def test_stream_cancellation_reclaims_every_paged_block(self) -> None:
+        """Closing a suspended stream releases its physical blocks."""
+        pool = PagedKVBlockPool(block_size=2, capacity=8)
+        engine = GenerationEngine(
+            FakeTokenizer(),
+            FakeModel(),
+            SamplingParams(max_new_tokens=8),
+            pool,
+        )
+        stream = engine.stream([{"role": "user", "content": "Hi"}])
+
+        with patch.dict(sys.modules, {"torch": fake_torch_module()}):
+            self.assertEqual(next(stream), "Hello")
+            self.assertGreater(pool.allocated_block_count, 0)
+            stream.close()
+
+        self.assertEqual(pool.allocated_block_count, 0)
 
     def test_stream_reports_cuda_out_of_memory(self) -> None:
         """CUDA allocation failures become concise user-facing errors."""
@@ -400,7 +565,11 @@ class EngineTests(TestCase):
                 raise FakeOOM
 
         fake_torch = fake_torch_module(FakeOOM)
-        engine = GreedyEngine(FakeTokenizer(), OutOfMemoryModel(), 1)
+        engine = GenerationEngine(
+            FakeTokenizer(),
+            OutOfMemoryModel(),
+            SamplingParams(max_new_tokens=1),
+        )
 
         with (
             patch.dict(sys.modules, {"torch": fake_torch}),

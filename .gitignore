@@ -1,5 +1,7 @@
 .agents/
 .codex/
+AGENTS.html
+AGENTS_files/
 
 __pycache__/
 *.py[cod]
@@ -11,6 +13,7 @@ __pycache__/
 build/
 dist/
 *.egg-info/
+target/
 
 *.bin
 *.ckpt
@@ -21,3 +24,4 @@ models/
 
 # Local validation output
 m1-l4-validation*.log
+m9-l4-evidence*.json

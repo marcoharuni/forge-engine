@@ -10,6 +10,10 @@ import torch
 from torch import Tensor, nn
 from torch.nn import functional as F
 
+from forge_engine.cache import PagedKVCache, PagedLayerView
+from forge_engine.kernels import residual_add_rms_norm
+from forge_engine.kernels.cuda_paged import paged_gqa_decode
+
 
 @dataclass(frozen=True, slots=True)
 class Qwen3Config:
@@ -134,7 +138,7 @@ class Qwen3Attention(nn.Module):
         hidden_states: Tensor,
         position_ids: Tensor,
         attention_mask: Tensor | None,
-        past_key_value: tuple[Tensor, Tensor] | None,
+        past_key_value: tuple[Tensor, Tensor] | PagedLayerView | None,
     ) -> tuple[Tensor, tuple[Tensor, Tensor]]:
         """Apply attention and return the extended contiguous KV tensors."""
         batch, query_length, _ = hidden_states.shape
@@ -156,6 +160,22 @@ class Qwen3Attention(nn.Module):
         )
         query, key = _apply_rotary(query, key, cosine, sine)
 
+        if isinstance(past_key_value, PagedLayerView):
+            if query_length != 1:
+                raise ValueError("paged attention is decode-only")
+            output = paged_gqa_decode(
+                query,
+                past_key_value.keys,
+                past_key_value.values,
+                key,
+                value,
+                past_key_value.sequence_length,
+                scale=self.scaling,
+            )
+            output = output.transpose(1, 2).contiguous().view(
+                batch, query_length, self.num_heads * self.head_dim
+            )
+            return self.o_proj(output), (key, value)
         if past_key_value is not None:
             past_key, past_value = past_key_value
             _validate_past(past_key, past_value, batch, self.num_kv_heads)
@@ -228,7 +248,7 @@ class Qwen3DecoderLayer(nn.Module):
         hidden_states: Tensor,
         position_ids: Tensor,
         attention_mask: Tensor | None,
-        past_key_value: tuple[Tensor, Tensor] | None,
+        past_key_value: tuple[Tensor, Tensor] | PagedLayerView | None,
     ) -> tuple[Tensor, tuple[Tensor, Tensor]]:
         """Run attention and MLP residual blocks."""
         attention, present = self.self_attn(
@@ -237,9 +257,14 @@ class Qwen3DecoderLayer(nn.Module):
             attention_mask,
             past_key_value,
         )
-        hidden_states = hidden_states + attention
+        hidden_states, normalized = residual_add_rms_norm(
+            hidden_states,
+            attention,
+            self.post_attention_layernorm.weight,
+            self.post_attention_layernorm.epsilon,
+        )
         hidden_states = hidden_states + self.mlp(
-            self.post_attention_layernorm(hidden_states)
+            normalized
         )
         return hidden_states, present
 
@@ -275,6 +300,11 @@ class Qwen3ForCausalLM(nn.Module):
         """Return the embedding device used by all staged parameters."""
         return self.model.embed_tokens.weight.device
 
+    @property
+    def supports_paged_decode(self) -> bool:
+        """Advertise direct single-request paged attention to the engine."""
+        return True
+
     def forward(
         self,
         *,
@@ -285,8 +315,18 @@ class Qwen3ForCausalLM(nn.Module):
     ) -> Qwen3Output:
         """Run explicit Qwen3 forward inference."""
         _validate_inputs(input_ids, attention_mask, self.device)
-        past = _normalize_past(past_key_values, len(self.model.layers))
-        past_length = 0 if past[0] is None else past[0][0].shape[2]
+        if isinstance(past_key_values, PagedKVCache):
+            past = tuple(
+                past_key_values.layer_view(layer_index)
+                for layer_index in range(len(self.model.layers))
+            )
+            past_length = past_key_values.sequence_length
+        else:
+            past = _normalize_past(
+                past_key_values,
+                len(self.model.layers),
+            )
+            past_length = 0 if past[0] is None else past[0][0].shape[2]
         position_ids = torch.arange(
             past_length,
             past_length + input_ids.shape[1],

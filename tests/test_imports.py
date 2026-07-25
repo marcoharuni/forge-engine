@@ -16,10 +16,12 @@ class ImportTests(TestCase):
             "forge_engine.config",
             "forge_engine.engine",
             "forge_engine.kernels",
-            "forge_engine.kernels.triton_ops",
+            "forge_engine.kernels.cuda_paged",
+            "forge_engine.kernels.cute_swiglu",
             "forge_engine.model",
             "forge_engine.qwen3",
             "forge_engine.sampling",
+            "forge_engine.scheduler",
             "forge_engine.server",
             "forge_engine.weights",
         )

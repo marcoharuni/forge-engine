@@ -89,6 +89,7 @@ class ModelLoadingTests(TestCase):
             cuda_available=True,
             bf16_supported=True,
         )
+        tokenizer = object()
 
         with (
             patch.dict(
@@ -102,6 +103,11 @@ class ModelLoadingTests(TestCase):
             ),
             patch.object(
                 weights,
+                "load_supported_tokenizer",
+                return_value=(tokenizer, object()),
+            ),
+            patch.object(
+                weights,
                 "load_staged_model",
                 return_value=(model, object()),
             ) as staged,
@@ -109,17 +115,9 @@ class ModelLoadingTests(TestCase):
             loaded = load_model(EngineConfig())
 
         self.assertIs(loaded.model, model)
+        self.assertIs(loaded.tokenizer, tokenizer)
         self.assertIs(staged.call_args.kwargs["dtype"], torch.bfloat16)
-        self.assertEqual(
-            transformers.loader_calls,
-            [
-                (
-                    "tokenizer",
-                    "Qwen/Qwen3-4B-Instruct-2507",
-                    "cdbee75f17c01a7cc42f958dc650907174af0554",
-                )
-            ],
-        )
+        self.assertEqual(transformers.loader_calls, [])
 
     def test_falls_back_to_float16(self) -> None:
         """FP16 is selected when BF16 is unsupported."""
@@ -137,6 +135,11 @@ class ModelLoadingTests(TestCase):
                 weights,
                 "download_supported_snapshot",
                 return_value="snapshot",
+            ),
+            patch.object(
+                weights,
+                "load_supported_tokenizer",
+                return_value=(object(), object()),
             ),
             patch.object(
                 weights,
@@ -185,6 +188,11 @@ class ModelLoadingTests(TestCase):
                 weights,
                 "download_supported_snapshot",
                 return_value="snapshot",
+            ),
+            patch.object(
+                weights,
+                "load_supported_tokenizer",
+                return_value=(object(), object()),
             ),
             patch.object(
                 weights,

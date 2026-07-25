@@ -1,0 +1,17 @@
+[package]
+name = "forge-streamer"
+version = "0.1.0"
+edition = "2021"
+description = "Small asynchronous SSE chat and load client for ForgeEngine"
+license = "Apache-2.0"
+
+[dependencies]
+futures-util = "0.3"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync", "time"] }
+
+[profile.release]
+strip = true
+lto = "thin"

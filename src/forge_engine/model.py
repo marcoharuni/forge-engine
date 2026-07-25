@@ -120,7 +120,6 @@ def load_transformers_oracle(dtype: object) -> tuple[object, object]:
 def load_model(config: EngineConfig) -> LoadedModel:
     """Load the tokenizer and staged ForgeEngine Qwen3 runner on CUDA."""
     import torch
-    from transformers import AutoTokenizer
 
     if not torch.cuda.is_available():
         raise CUDAUnavailableError(
@@ -129,17 +128,15 @@ def load_model(config: EngineConfig) -> LoadedModel:
 
     from forge_engine.weights import (
         download_supported_snapshot,
+        load_supported_tokenizer,
         load_staged_model,
     )
 
     dtype = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
 
     try:
-        tokenizer = AutoTokenizer.from_pretrained(
-            DEFAULT_MODEL_ID,
-            revision=SUPPORTED_MODEL_REVISION,
-        )
         snapshot = download_supported_snapshot()
+        tokenizer, _ = load_supported_tokenizer(snapshot)
         model, _ = load_staged_model(
             snapshot,
             device=torch.device("cuda"),

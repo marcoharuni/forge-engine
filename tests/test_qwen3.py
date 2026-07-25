@@ -64,6 +64,80 @@ class Qwen3Tests(TestCase):
         self.assertEqual(decode.past_key_values[0][0].shape, (1, 1, 3, 4))
         self.assertEqual(len(complete.layer_hidden_states), 2)
 
+    def test_matches_transformers_eager_reference(self) -> None:
+        """Layer outputs and logits match the trusted tiny Qwen3 oracle."""
+        from transformers import Qwen3Config as OracleConfig
+        from transformers import Qwen3ForCausalLM as OracleModel
+
+        torch.manual_seed(11)
+        model = Qwen3ForCausalLM(tiny_config()).eval()
+        oracle_config = OracleConfig(
+            vocab_size=32,
+            hidden_size=8,
+            intermediate_size=16,
+            num_hidden_layers=2,
+            num_attention_heads=2,
+            num_key_value_heads=1,
+            head_dim=4,
+            max_position_embeddings=64,
+            rms_norm_eps=1e-6,
+            rope_theta=10_000.0,
+            eos_token_id=2,
+            tie_word_embeddings=True,
+            attention_bias=False,
+            attention_dropout=0.0,
+            use_sliding_window=False,
+        )
+        oracle = OracleModel(oracle_config).eval()
+        oracle.model.load_state_dict(model.model.state_dict())
+        oracle.tie_weights()
+        captured: list[torch.Tensor] = []
+        handles = [
+            layer.register_forward_hook(
+                lambda _module, _inputs, output: captured.append(
+                    output.detach().clone()
+                )
+            )
+            for layer in oracle.model.layers
+        ]
+        input_ids = torch.tensor([[4, 5, 6]], dtype=torch.long)
+
+        try:
+            with torch.inference_mode():
+                actual = model(input_ids=input_ids, use_cache=False)
+                expected = oracle(
+                    input_ids=input_ids,
+                    use_cache=False,
+                )
+        finally:
+            for handle in handles:
+                handle.remove()
+
+        self.assertEqual(len(captured), 2)
+        for actual_layer, expected_layer in zip(
+            actual.layer_hidden_states,
+            captured,
+            strict=True,
+        ):
+            torch.testing.assert_close(
+                actual_layer,
+                expected_layer,
+                atol=1e-6,
+                rtol=1e-6,
+            )
+        torch.testing.assert_close(
+            actual.logits,
+            expected.logits.float(),
+            atol=1e-6,
+            rtol=1e-6,
+        )
+        self.assertTrue(
+            torch.equal(
+                actual.logits[:, -1].argmax(dim=-1),
+                expected.logits[:, -1].argmax(dim=-1),
+            )
+        )
+
     def test_rejects_attention_mask_on_another_device(self) -> None:
         """Input metadata is checked before model math."""
         model = Qwen3ForCausalLM(tiny_config()).to("meta")

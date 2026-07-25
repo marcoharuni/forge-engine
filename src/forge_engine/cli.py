@@ -7,8 +7,11 @@ import sys
 from collections.abc import Sequence
 
 from forge_engine.config import EngineConfig
-from forge_engine.engine import GreedyEngine
+from forge_engine.engine import GenerationEngine
 from forge_engine.model import ChatMessage, ForgeEngineError
+from forge_engine.sampling import normalize_stop_strings
+from forge_engine.scheduler import SchedulerConfig
+from forge_engine.server import run_server
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -16,13 +19,42 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="forge-engine")
     commands = parser.add_subparsers(dest="command", required=True)
     chat = commands.add_parser("chat", help="start an interactive CUDA chat")
-    chat.add_argument("--max-new-tokens", type=int, default=256)
+    _add_generation_arguments(chat)
+    serve = commands.add_parser(
+        "serve",
+        help="start the streaming HTTP and browser chat service",
+    )
+    _add_generation_arguments(serve)
+    serve.add_argument("--host", default="127.0.0.1")
+    serve.add_argument("--port", type=int, default=8000)
+    serve.add_argument("--max-requests", type=int, default=16)
+    serve.add_argument("--max-batch-size", type=int, default=8)
+    serve.add_argument("--token-budget", type=int, default=256)
+    serve.add_argument("--block-size", type=int, default=16)
+    serve.add_argument("--block-capacity", type=int, default=1_024)
     return parser
+
+
+def _add_generation_arguments(
+    command: argparse.ArgumentParser,
+) -> None:
+    """Add sampling defaults shared by terminal and HTTP serving."""
+    command.add_argument("--max-new-tokens", type=int, default=256)
+    command.add_argument("--temperature", type=float, default=0.0)
+    command.add_argument("--top-k", type=int)
+    command.add_argument("--top-p", type=float, default=1.0)
+    command.add_argument("--min-p", type=float, default=0.0)
+    command.add_argument(
+        "--stop",
+        action="append",
+        help="stop string; may be supplied more than once",
+    )
+    command.add_argument("--seed", type=int)
 
 
 def run_chat(config: EngineConfig) -> int:
     """Run a single-user terminal chat until end of input."""
-    engine = GreedyEngine.from_config(config)
+    engine = GenerationEngine.from_config(config)
     messages: list[ChatMessage] = []
 
     while True:
@@ -50,12 +82,33 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
 
     try:
+        engine_config = EngineConfig(
+            max_new_tokens=args.max_new_tokens,
+            temperature=args.temperature,
+            top_k=args.top_k,
+            top_p=args.top_p,
+            min_p=args.min_p,
+            stop_strings=normalize_stop_strings(args.stop),
+            seed=args.seed,
+        )
         if args.command == "chat":
-            return run_chat(
-                EngineConfig(
-                    max_new_tokens=args.max_new_tokens,
-                )
+            return run_chat(engine_config)
+        if args.command == "serve":
+            if not 1 <= args.port <= 65_535:
+                raise ValueError("port must be in [1, 65535]")
+            run_server(
+                engine_config,
+                SchedulerConfig(
+                    max_requests=args.max_requests,
+                    max_batch_size=args.max_batch_size,
+                    token_budget=args.token_budget,
+                    block_size=args.block_size,
+                    block_capacity=args.block_capacity,
+                ),
+                host=args.host,
+                port=args.port,
             )
+            return 0
     except (ForgeEngineError, ValueError) as error:
         print(f"forge-engine: {error}", file=sys.stderr)
         return 1
