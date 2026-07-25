@@ -9,6 +9,8 @@ description = "A small, readable, single-GPU inference engine for Qwen."
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
+    "huggingface-hub",
+    "safetensors",
     "torch",
     "transformers",
 ]

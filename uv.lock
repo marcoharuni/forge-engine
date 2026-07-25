@@ -273,6 +273,8 @@ name = "forge-engine"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "huggingface-hub" },
+    { name = "safetensors" },
     { name = "torch", version = "2.13.0", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "sys_platform == 'darwin'" },
     { name = "torch", version = "2.13.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "sys_platform != 'darwin'" },
     { name = "transformers" },
@@ -286,8 +288,10 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "huggingface-hub" },
     { name = "modal", marker = "extra == 'dev'" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8" },
+    { name = "safetensors" },
     { name = "torch", index = "https://download.pytorch.org/whl/cpu" },
     { name = "transformers" },
 ]

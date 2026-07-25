@@ -18,8 +18,10 @@ class ImportTests(TestCase):
             "forge_engine.kernels",
             "forge_engine.kernels.triton_ops",
             "forge_engine.model",
+            "forge_engine.qwen3",
             "forge_engine.sampling",
             "forge_engine.server",
+            "forge_engine.weights",
         )
 
         for module in modules:

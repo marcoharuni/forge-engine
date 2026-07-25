@@ -100,15 +100,37 @@ class LoadedModel:
     model: LanguageModel
 
 
-def load_model(config: EngineConfig) -> LoadedModel:
-    """Load and prepare the configured model on CUDA."""
-    import torch
+def load_transformers_oracle(dtype: object) -> tuple[object, object]:
+    """Load the pinned Transformers pair for correctness checks only."""
     from transformers import AutoModelForCausalLM, AutoTokenizer
+
+    tokenizer = AutoTokenizer.from_pretrained(
+        DEFAULT_MODEL_ID,
+        revision=SUPPORTED_MODEL_REVISION,
+    )
+    model = AutoModelForCausalLM.from_pretrained(
+        DEFAULT_MODEL_ID,
+        dtype=dtype,
+        revision=SUPPORTED_MODEL_REVISION,
+        attn_implementation="eager",
+    )
+    return tokenizer, model
+
+
+def load_model(config: EngineConfig) -> LoadedModel:
+    """Load the tokenizer and staged ForgeEngine Qwen3 runner on CUDA."""
+    import torch
+    from transformers import AutoTokenizer
 
     if not torch.cuda.is_available():
         raise CUDAUnavailableError(
             "CUDA is required, but no CUDA device is available."
         )
+
+    from forge_engine.weights import (
+        download_supported_snapshot,
+        load_staged_model,
+    )
 
     dtype = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
 
@@ -117,13 +139,12 @@ def load_model(config: EngineConfig) -> LoadedModel:
             DEFAULT_MODEL_ID,
             revision=SUPPORTED_MODEL_REVISION,
         )
-        model = AutoModelForCausalLM.from_pretrained(
-            DEFAULT_MODEL_ID,
+        snapshot = download_supported_snapshot()
+        model, _ = load_staged_model(
+            snapshot,
+            device=torch.device("cuda"),
             dtype=dtype,
-            revision=SUPPORTED_MODEL_REVISION,
         )
-        model.to("cuda")
-        model.eval()
     except torch.cuda.OutOfMemoryError as error:
         raise CUDAOutOfMemoryError(
             "CUDA out of memory while loading the model. "
