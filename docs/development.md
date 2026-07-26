@@ -24,13 +24,15 @@ The release GPU environment is pinned separately because `uv.lock` is
 CPU-safe:
 
 ```bash
-python3.11 -m venv .venv
+uv venv --python 3.11
 source .venv/bin/activate
-python -m pip install --upgrade pip
-python -m pip install -r requirements-gpu.txt
-python -m pip install --no-deps .
+uv pip install -r requirements-gpu.txt
+uv pip install --no-deps .
 python -c "import torch; assert torch.cuda.is_available(); print(torch.cuda.get_device_name(0))"
 ```
+
+Use `uv pip` for the GPU environment rather than `uv sync`: the committed lock
+file deliberately selects CPU PyTorch for development and hosted CI.
 
 The integrated CUDA extension is JIT-compiled. Install a compatible CUDA
 development toolkit, `g++`, and Ninja to exercise it. Normal serving

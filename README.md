@@ -74,19 +74,18 @@ distributions are in [docs/benchmarks.md](docs/benchmarks.md).
 
 ## Quickstart
 
-Requirements: Linux, Python 3.11, one compatible NVIDIA GPU, and enough memory
-for the 4B BF16 model and KV cache. The first run downloads the pinned model;
-later runs reuse `HF_HOME`.
+Requirements: Linux, `uv`, one compatible NVIDIA GPU, and enough memory for the
+4B BF16 model and KV cache. The first run downloads the pinned model; later
+runs reuse `HF_HOME`.
 
 ```bash
 git clone https://github.com/marcoharuni/forge-engine.git
 cd forge-engine
 
-python3.11 -m venv .venv
+uv venv --python 3.11
 source .venv/bin/activate
-python -m pip install --upgrade pip
-python -m pip install -r requirements-gpu.txt
-python -m pip install --no-deps .
+uv pip install -r requirements-gpu.txt
+uv pip install --no-deps .
 
 export HF_HOME="$PWD/.hf-cache"
 python -c "import torch; assert torch.cuda.is_available(); print(torch.cuda.get_device_name(0))"
