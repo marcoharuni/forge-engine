@@ -1,4 +1,6 @@
-# ForgeEngine
+<p align="center">
+  <img src="assets/forge-engine-logo.png" alt="ForgeEngine — LLM inference engine" width="900">
+</p>
 
 [![CI](https://github.com/marcoharuni/forge-engine/actions/workflows/ci.yml/badge.svg)](https://github.com/marcoharuni/forge-engine/actions/workflows/ci.yml)
 ![Python](https://img.shields.io/badge/python-3.11%2B-blue)
