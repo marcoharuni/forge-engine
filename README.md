@@ -102,10 +102,10 @@ Other NVIDIA GPUs are not currently validated.
 
 | Measurement | Verified result |
 | --- | ---: |
-| Python tests | 91 passed |
+| Python tests | 93 passed |
 | Parameter-validation subtests | 16 passed |
 | Rust tests | 3 passed |
-| End-to-end throughput | 19.31 generated tokens/s |
+| End-to-end throughput | 15.62 generated tokens/s |
 | Measured concurrency | 4 |
 | Peak process CUDA allocation | 8.88 GB |
 | Failed requests | 0 |

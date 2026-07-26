@@ -26,7 +26,8 @@ PyTorch `2.13.0+cu130`, CUDA `13.0`, Transformers `5.14.1`, Triton `3.7.1`,
 and BF16. The pinned model revision was
 `cdbee75f17c01a7cc42f958dc650907174af0554`.
 
-- `90` tests and `16` parameter-validation subtests passed.
+- `93` Python tests, `16` parameter-validation subtests, and `3` Rust tests
+  passed.
 - Triton residual-add + RMSNorm, restricted causal prefill, and CUDA paged GQA
   decode passed their strict custom-kernel numerical comparisons.
 - Eight strict integrated decode tokens were exactly
@@ -40,13 +41,13 @@ Synchronized benchmark medians:
 
 | Workload | Custom median | PyTorch median | Custom peak increment |
 | --- | ---: | ---: | ---: |
-| Triton residual + RMSNorm, `[512, 2560]` BF16 | `0.067680 ms` | `0.110512 ms` | `5,242,880` bytes |
-| Triton causal prefill, `[1, 8, 128, 128]` BF16 | `0.072192 ms` | `0.253472 ms` | `262,144` bytes |
-| CUDA paged GQA, past 127, Q32/KV8/D128 BF16 | `0.099328 ms` | `0.312320 ms` | `9,216` bytes |
+| Triton residual + RMSNorm, `[512, 2560]` BF16 | `0.084992 ms` | `0.148992 ms` | `5,242,880` bytes |
+| Triton causal prefill, `[1, 8, 128, 128]` BF16 | `0.089088 ms` | `0.368640 ms` | `262,144` bytes |
+| CUDA paged GQA, past 127, Q32/KV8/D128 BF16 | `0.100352 ms` | `0.462304 ms` | `9,216` bytes |
 
 Every result used 10 warm-up iterations, 50 measured iterations, CUDA events,
-and an explicit synchronization. Maximum absolute error was `0.001953125` for
-the prefill lab and `0.000244140625` for paged GQA decode.
+and an explicit synchronization. Maximum absolute error was `0.00390625` for
+the prefill lab and `0.0` for paged GQA decode.
 
 Generated-code observations:
 

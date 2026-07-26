@@ -1,6 +1,8 @@
-# v0.1.0 release checklist
+# Historical v0.1.0 development checklist
 
-ForgeEngine is complete only when every required item below is true.
+This document preserves the original development criteria. It is not the
+current release status. Current verified status is recorded in
+[`docs/validation.md`](../validation.md).
 
 ## Run and use
 

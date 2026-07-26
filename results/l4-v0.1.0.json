@@ -19,7 +19,7 @@
     "triton": "3.7.1"
   },
   "tests": {
-    "python_passed": 91,
+    "python_passed": 93,
     "parameter_subtests_passed": 16,
     "rust_passed": 3
   },
@@ -31,37 +31,37 @@
     "cancelled": 2,
     "failed": 0,
     "generated_tokens": 199,
-    "wall_seconds": 10.306798,
-    "throughput_generated_tokens_per_second": 19.307646,
+    "wall_seconds": 12.739533733,
+    "throughput_generated_tokens_per_second": 15.620665887050325,
     "max_observed_active_requests": 4,
     "peak_cuda_allocated_bytes": 8879752192,
     "client_latency_seconds": {
-      "mean_ttft": 0.396415,
-      "mean_itl": 0.122788,
-      "p50_duration": 4.239049,
-      "p95_duration": 6.272952
+      "mean_ttft": 0.5277620519999999,
+      "mean_itl": 0.15313669311626343,
+      "p50_duration": 5.194080599,
+      "p95_duration": 7.736029697
     },
     "server_latency_seconds": {
-      "mean_ttft": 0.136788,
-      "mean_itl": 0.165396,
-      "mean_duration": 4.085908
+      "mean_ttft": 0.17853112300000007,
+      "mean_itl": 0.20552343563874345,
+      "mean_duration": 5.085837242125
     }
   },
   "kernels": {
     "triton_residual_add_rms_norm": {
-      "custom_median_ms": 0.067680,
-      "pytorch_median_ms": 0.110512,
-      "speedup": 1.632861
+      "custom_median_ms": 0.08499199897050858,
+      "pytorch_median_ms": 0.14899200201034546,
+      "speedup": 1.753012093080012
     },
     "restricted_triton_prefill_lab": {
-      "custom_median_ms": 0.072192,
-      "pytorch_median_ms": 0.253472,
-      "speedup": 3.511082
+      "custom_median_ms": 0.08908800035715103,
+      "pytorch_median_ms": 0.3686400055885315,
+      "speedup": 4.1379310806243845
     },
     "cuda_paged_gqa_decode": {
-      "custom_median_ms": 0.099328,
-      "pytorch_median_ms": 0.312320,
-      "speedup": 3.144330
+      "custom_median_ms": 0.10035199671983719,
+      "pytorch_median_ms": 0.4623039960861206,
+      "speedup": 4.606824091171613
     }
   },
   "final_cleanup": {
@@ -71,7 +71,7 @@
     "allocated_kv_blocks": 0
   },
   "accepted_modal_runs": {
-    "pre_cleanup_l4_serving": "ap-84H39cJBXlRUR01x3rswR8",
-    "pre_cleanup_l4_docker": "ap-Pxmw8seSpFwN6mRvSmTyMJ"
+    "l4_validation": "ap-ETY99zS1VmyYLnbuFpyGa7",
+    "docker_l4_validation": "ap-lb7G8O0g25V1SNUo3rpEiz"
   }
 }

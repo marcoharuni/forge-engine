@@ -12,7 +12,7 @@ to install ForgeEngine or chat with the model.
 
 | Area | Hardware | Result |
 | --- | --- | --- |
-| Python tests | NVIDIA L4 validation image | 91 passed |
+| Python tests | NVIDIA L4 validation image | 93 passed |
 | Parameter validation | NVIDIA L4 validation image | 16 subtests passed |
 | Rust client tests | NVIDIA L4 validation image | 3 passed |
 | Pinned-model correctness | NVIDIA L4, BF16 | passed |
@@ -50,6 +50,11 @@ uv run --extra dev modal run tools/validate_docker_l4.py
 ```
 
 The successful command prints `DOCKER_L4_ACCEPTANCE=PASS`.
+
+Accepted Modal runs:
+
+- L4 validation: `ap-ETY99zS1VmyYLnbuFpyGa7`
+- Docker L4 validation: `ap-lb7G8O0g25V1SNUo3rpEiz`
 
 ## Evidence boundaries
 
