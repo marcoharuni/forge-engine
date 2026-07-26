@@ -89,12 +89,20 @@ uv pip install --no-deps .
 
 export HF_HOME="$PWD/.hf-cache"
 python -c "import torch; assert torch.cuda.is_available(); print(torch.cuda.get_device_name(0))"
+forge-engine chat --max-new-tokens 256
+```
+
+Type a message after `You:`. Press `Ctrl+D` to exit.
+
+## Browser and streaming API
+
+Start the server:
+
+```bash
 forge-engine serve --host 127.0.0.1 --port 8000
 ```
 
-Open `http://127.0.0.1:8000` for browser chat.
-
-## Send a streaming request
+Open `http://127.0.0.1:8000` for browser chat, or send a streaming request:
 
 ```bash
 curl -N http://127.0.0.1:8000/v1/chat/completions \
@@ -108,14 +116,6 @@ curl -N http://127.0.0.1:8000/v1/chat/completions \
 ```
 
 Health and Prometheus metrics are available at `/health` and `/metrics`.
-
-## Terminal chat
-
-Run terminal chat instead of the server:
-
-```bash
-forge-engine chat --max-new-tokens 128
-```
 
 ## Docker
 

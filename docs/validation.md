@@ -5,6 +5,9 @@ microbenchmarks, and end-to-end serving measurements. Transformers is used only
 as the trusted correctness oracle; the engine never calls `model.generate` or
 `pipeline`.
 
+This document is maintainer evidence. Users do not need to run these commands
+to install ForgeEngine or chat with the model.
+
 ## Current verified status
 
 | Area | Hardware | Result |
