@@ -1,4 +1,4 @@
-# ForgeEngine Definition of Done
+# v0.1.0 release checklist
 
 ForgeEngine is complete only when every required item below is true.
 

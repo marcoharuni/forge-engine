@@ -3,10 +3,15 @@
 from __future__ import annotations
 
 import argparse
+import os
+import platform
+import shutil
 import sys
 from collections.abc import Sequence
+from pathlib import Path
 
-from forge_engine.config import EngineConfig
+from forge_engine import __version__
+from forge_engine.config import DEFAULT_MODEL_ID, SUPPORTED_MODEL_REVISION, EngineConfig
 from forge_engine.engine import GenerationEngine
 from forge_engine.model import ChatMessage, ForgeEngineError
 from forge_engine.sampling import normalize_stop_strings
@@ -17,6 +22,11 @@ from forge_engine.server import run_server
 def build_parser() -> argparse.ArgumentParser:
     """Build the ForgeEngine argument parser."""
     parser = argparse.ArgumentParser(prog="forge-engine")
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"%(prog)s {__version__}",
+    )
     commands = parser.add_subparsers(dest="command", required=True)
     chat = commands.add_parser("chat", help="start an interactive CUDA chat")
     _add_generation_arguments(chat)
@@ -32,6 +42,10 @@ def build_parser() -> argparse.ArgumentParser:
     serve.add_argument("--token-budget", type=int, default=256)
     serve.add_argument("--block-size", type=int, default=16)
     serve.add_argument("--block-capacity", type=int, default=1_024)
+    commands.add_parser(
+        "doctor",
+        help="print the local ForgeEngine and CUDA environment",
+    )
     return parser
 
 
@@ -77,11 +91,49 @@ def run_chat(config: EngineConfig) -> int:
         messages.append({"role": "assistant", "content": response})
 
 
+def run_doctor() -> int:
+    """Print concise diagnostics without loading model weights."""
+    import torch
+
+    cuda_available = bool(torch.cuda.is_available())
+    gpu_name = torch.cuda.get_device_name(0) if cuda_available else "unavailable"
+    compute_capability = (
+        ".".join(str(part) for part in torch.cuda.get_device_capability(0))
+        if cuda_available
+        else "unavailable"
+    )
+    bf16_supported = bool(torch.cuda.is_bf16_supported()) if cuda_available else False
+    hf_home = os.environ.get(
+        "HF_HOME",
+        str(Path.home() / ".cache" / "huggingface"),
+    )
+    fields = (
+        ("forge_engine_version", __version__),
+        ("python_version", platform.python_version()),
+        ("pytorch_version", torch.__version__),
+        ("cuda_available", cuda_available),
+        ("gpu_name", gpu_name),
+        ("compute_capability", compute_capability),
+        ("bf16_supported", bf16_supported),
+        ("cuda_toolkit_available", shutil.which("nvcc") is not None),
+        ("g++_available", shutil.which("g++") is not None),
+        ("ninja_available", shutil.which("ninja") is not None),
+        ("hf_home", hf_home),
+        ("model", DEFAULT_MODEL_ID),
+        ("model_revision", SUPPORTED_MODEL_REVISION),
+    )
+    for name, value in fields:
+        print(f"{name}={value}")
+    return 0
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """Run the requested ForgeEngine command."""
     args = build_parser().parse_args(argv)
 
     try:
+        if args.command == "doctor":
+            return run_doctor()
         engine_config = EngineConfig(
             max_new_tokens=args.max_new_tokens,
             temperature=args.temperature,

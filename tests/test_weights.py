@@ -23,8 +23,8 @@ from forge_engine.weights import (
     _expected_parameter_shapes,
     download_supported_snapshot,
     inspect_package,
-    load_supported_tokenizer,
     load_safetensors_into_model,
+    load_supported_tokenizer,
 )
 
 
@@ -82,9 +82,7 @@ class WeightsTests(TestCase):
                 "model-00003-of-00003.safetensors",
             )
             tensors = {
-                f"tensor.{index}": torch.tensor(
-                    [index], dtype=torch.bfloat16
-                )
+                f"tensor.{index}": torch.tensor([index], dtype=torch.bfloat16)
                 for index in range(EXPECTED_TENSOR_COUNT)
             }
             weight_map = {

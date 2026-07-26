@@ -55,9 +55,7 @@ def paged_gqa_decode_reference(
     value = torch.cat(tuple(values), dim=2)
     repeated_key = key.repeat_interleave(groups, dim=1)
     repeated_value = value.repeat_interleave(groups, dim=1)
-    effective_scale = (
-        query.shape[-1] ** -0.5 if scale is None else scale
-    )
+    effective_scale = query.shape[-1] ** -0.5 if scale is None else scale
     scores = torch.matmul(
         query.float(),
         repeated_key.float().transpose(-2, -1),
@@ -101,9 +99,7 @@ def paged_gqa_decode(
     if reason is None:
         try:
             extension = _load_extension()
-            effective_scale = (
-                query.shape[-1] ** -0.5 if scale is None else scale
-            )
+            effective_scale = query.shape[-1] ** -0.5 if scale is None else scale
             return extension.paged_gqa_decode_cuda(
                 query,
                 list(key_pages),

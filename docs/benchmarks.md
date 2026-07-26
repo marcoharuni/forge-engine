@@ -6,7 +6,7 @@ hardware.
 
 ## Accepted L4 correctness and kernel evidence
 
-The M7 validator ran on one NVIDIA L4 (compute capability 8.9) using BF16,
+The strict kernel validator ran on one NVIDIA L4 (compute capability 8.9) using BF16,
 PyTorch `2.13.0+cu130`, CUDA `13.0`, Transformers `5.14.1`, and Triton `3.7.1`.
 It used model revision
 `cdbee75f17c01a7cc42f958dc650907174af0554`.
@@ -21,11 +21,15 @@ It used model revision
 The synchronized kernel measurements used 10 warm-ups, 50 measured
 iterations, CUDA events, and an explicit synchronization:
 
-| Workload | Custom median | PyTorch median | Custom peak increment |
+| Workload | Custom median | PyTorch median | Result |
 | --- | ---: | ---: | ---: |
-| Triton residual + RMSNorm, `[512, 2560]` BF16 | `0.067680 ms` | `0.110512 ms` | `5,242,880 B` |
-| Triton causal prefill lab, `[1, 8, 128, 128]` BF16 | `0.072192 ms` | `0.253472 ms` | `262,144 B` |
-| CUDA paged GQA, past 127, Q32/KV8/D128 BF16 | `0.099328 ms` | `0.312320 ms` | `9,216 B` |
+| Triton residual + RMSNorm, `[512, 2560]` BF16 | `0.067680 ms` | `0.110512 ms` | **1.63× faster** |
+| Restricted Triton prefill lab, `[1, 8, 128, 128]` BF16 | `0.072192 ms` | `0.253472 ms` | **3.51× faster** |
+| CUDA paged GQA, past 127, Q32/KV8/D128 BF16 | `0.099328 ms` | `0.312320 ms` | **3.14× faster** |
+
+Custom peak increments were `5,242,880 B`, `262,144 B`, and `9,216 B`
+respectively. The machine-readable release result is
+[`results/l4-v0.1.0.json`](../results/l4-v0.1.0.json).
 
 The complete latency distributions, throughput units, numerical tolerances,
 generated-code observations, and limitations are in
@@ -33,7 +37,7 @@ generated-code observations, and limitations are in
 
 ## Accepted L4 serving and client evidence
 
-The M8 validator ran on one NVIDIA L4 with PyTorch `2.13.0+cu130`.
+The Rust serving validator ran on one NVIDIA L4 with PyTorch `2.13.0+cu130`.
 
 - `91` Python tests, `16` parameter-validation subtests, and `3` Rust tests
   passed.
@@ -50,7 +54,7 @@ The M8 validator ran on one NVIDIA L4 with PyTorch `2.13.0+cu130`.
 This is one controlled validation workload, not a capacity claim or comparison
 with another engine.
 
-## M9 consolidated serving measurement
+## Consolidated serving measurement
 
 The consolidated validator passed on one NVIDIA L4 (compute capability 8.9)
 with driver `580.95.05`, BF16, PyTorch `2.13.0+cu130`, CUDA `13.0`,
@@ -77,21 +81,22 @@ requests. Each terminal SSE event follows the synchronous scheduler/CUDA step;
 metrics and health are fetched after all requests reach a terminal state. It
 is a fixed serving workload, not a CUDA-event kernel microbenchmark.
 
-Exact accepted command:
+Current reproduction command:
 
 ```bash
-uv run --extra dev modal run tools/modal_l4_validate_m9.py
+uv run --extra dev modal run tools/validate_l4.py
 ```
 
-The accepted run printed `M9_ACCEPTANCE=PASS`. Modal run:
-`ap-84H39cJBXlRUR01x3rswR8`.
+The measurements above come from accepted pre-consolidation Modal run
+`ap-84H39cJBXlRUR01x3rswR8`. The consolidated validator still requires a rerun
+after this release-cleanup change.
 
 ## Optional prepared hardware lab
 
 Run the CuTe lab only on its prepared H100:
 
 ```bash
-uv run --extra dev modal run tools/modal_h100_validate_cute_m7.py
+uv run --extra dev modal run tools/validate_cute_h100.py
 ```
 
 The image and CuTe dependencies built on 2026-07-26, but the H100 function did
@@ -123,8 +128,9 @@ validator rejects compilation errors and the accepted service log contained
 none. Exact command:
 
 ```bash
-uv run --extra dev modal run tools/modal_docker_validate_m9.py
+uv run --extra dev modal run tools/validate_docker_l4.py
 ```
 
-The accepted run printed `M9_DOCKER_ACCEPTANCE=PASS`. Modal run:
-`ap-Pxmw8seSpFwN6mRvSmTyMJ`.
+The Docker evidence comes from accepted pre-consolidation Modal run
+`ap-Pxmw8seSpFwN6mRvSmTyMJ`. The renamed validator and current image still
+require a rerun after this release-cleanup change.

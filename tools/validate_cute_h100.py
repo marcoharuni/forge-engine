@@ -1,34 +1,119 @@
-"""Run the optional M7 CuTe DSL SwiGLU lab on one Modal H100."""
+"""Run the optional CuTe DSL SwiGLU lab on one H100."""
 
 from __future__ import annotations
 
 import re
+import statistics
 import subprocess
+from collections.abc import Callable
 from pathlib import Path
 
 import modal
 
-from tools.modal_l4_validate import hf_cache_volume
-from tools.modal_l4_validate_m7 import (
-    ARTIFACT_DIRECTORY,
-    _benchmark_cuda,
-    m7_image,
-)
-
-APP_NAME = "forge-engine-m7-cute-h100-validation"
-CUTE_ARTIFACT_DIRECTORY = ARTIFACT_DIRECTORY / "cute"
+APP_NAME = "forge-engine-cute-h100-validation"
+REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
+REMOTE_REPOSITORY = Path("/repo")
+HF_HOME = Path("/cache/huggingface")
+CUTE_ARTIFACT_DIRECTORY = Path("/tmp/forge-cute-h100-artifacts")
+WARMUP_ITERATIONS = 10
+BENCHMARK_ITERATIONS = 50
+REPOSITORY_IGNORES = [
+    ".git",
+    ".git/**",
+    ".venv",
+    ".venv/**",
+    ".agents",
+    ".agents/**",
+    ".codex",
+    ".codex/**",
+    "**/__pycache__/**",
+    "**/.pytest_cache/**",
+    "**/target/**",
+    "*.safetensors",
+    "models/**",
+]
 
 cute_image = (
-    m7_image.run_commands('python -m pip install "/repo[cute]"')
+    modal.Image.from_registry(
+        "nvidia/cuda:13.0.3-devel-ubuntu22.04",
+        add_python="3.11",
+    )
+    .entrypoint([])
+    .apt_install("binutils", "ninja-build")
+    .add_local_dir(
+        REPOSITORY_ROOT,
+        remote_path=str(REMOTE_REPOSITORY),
+        copy=True,
+        ignore=REPOSITORY_IGNORES,
+    )
+    .run_commands('python -m pip install "/repo[dev,cute]"')
     .env(
         {
+            "HF_HOME": str(HF_HOME),
+            "MAX_JOBS": "2",
+            "TORCH_CUDA_ARCH_LIST": "9.0+PTX",
             "CUTE_DSL_DUMP_DIR": str(CUTE_ARTIFACT_DIRECTORY),
             "CUTE_DSL_KEEP": "ptx,cubin",
         }
     )
+    .workdir(REMOTE_REPOSITORY)
 )
 
 app = modal.App(APP_NAME)
+hf_cache_volume = modal.Volume.from_name(
+    "forge-engine-hf-cache",
+    create_if_missing=True,
+)
+
+
+def _benchmark_cuda(
+    torch: object,
+    operation: Callable[[], object],
+    *,
+    work_items: int,
+    throughput_unit: str,
+) -> dict[str, object]:
+    """Measure one CUDA operation with events and synchronization."""
+    with torch.inference_mode():
+        for _ in range(WARMUP_ITERATIONS):
+            operation()
+        torch.cuda.synchronize()
+        torch.cuda.reset_peak_memory_stats()
+        allocated_before = int(torch.cuda.memory_allocated())
+        starts = [
+            torch.cuda.Event(enable_timing=True) for _ in range(BENCHMARK_ITERATIONS)
+        ]
+        ends = [
+            torch.cuda.Event(enable_timing=True) for _ in range(BENCHMARK_ITERATIONS)
+        ]
+        for start, end in zip(starts, ends, strict=True):
+            start.record()
+            operation()
+            end.record()
+        torch.cuda.synchronize()
+    elapsed_ms = [
+        float(start.elapsed_time(end)) for start, end in zip(starts, ends, strict=True)
+    ]
+    ordered = sorted(elapsed_ms)
+    median_ms = float(statistics.median(ordered))
+    peak_memory = int(torch.cuda.max_memory_allocated())
+    return {
+        "warmup": WARMUP_ITERATIONS,
+        "iterations": BENCHMARK_ITERATIONS,
+        "synchronized": True,
+        "latency_ms": {
+            "minimum": ordered[0],
+            "p10": ordered[int(0.10 * (len(ordered) - 1))],
+            "median": median_ms,
+            "p90": ordered[int(0.90 * (len(ordered) - 1))],
+            "maximum": ordered[-1],
+        },
+        "throughput": work_items / (median_ms / 1_000.0),
+        "throughput_unit": throughput_unit,
+        "allocated_before_bytes": allocated_before,
+        "peak_memory_bytes": peak_memory,
+        "peak_increment_bytes": peak_memory - allocated_before,
+    }
 
 
 def _artifact_counts() -> dict[str, object]:
@@ -80,7 +165,7 @@ def _artifact_counts() -> dict[str, object]:
     timeout=30 * 60,
     volumes={"/cache": hf_cache_volume},
 )
-def validate_cute_m7() -> dict[str, object]:
+def validate_cute_h100() -> dict[str, object]:
     """Validate the exact Qwen-sized fused CuTe lab and its artifacts."""
     import cutlass
     import torch
@@ -119,14 +204,11 @@ def validate_cute_m7() -> dict[str, object]:
         "nvcc": nvcc,
         "precision": "bfloat16",
     }
-    print(f"M7_CUTE_SOFTWARE={software}", flush=True)
+    print(f"CUTE_H100_SOFTWARE={software}", flush=True)
     CUTE_ARTIFACT_DIRECTORY.mkdir(parents=True, exist_ok=True)
 
     torch.manual_seed(731)
-    inputs = (
-        torch.randn((1, 2_560), device=device, dtype=torch.bfloat16)
-        * 0.02
-    )
+    inputs = torch.randn((1, 2_560), device=device, dtype=torch.bfloat16) * 0.02
     gate_weight = (
         torch.randn(
             (9_728, 2_560),
@@ -194,8 +276,8 @@ def validate_cute_m7() -> dict[str, object]:
         "maximum_absolute_error": maximum_absolute_error,
     }
     artifacts = _artifact_counts()
-    print(f"M7_CUTE_BENCHMARK={benchmark}", flush=True)
-    print(f"M7_CUTE_PTX_SASS={artifacts}", flush=True)
+    print(f"CUTE_H100_BENCHMARK={benchmark}", flush=True)
+    print(f"CUTE_H100_PTX_SASS={artifacts}", flush=True)
     return {
         "software": software,
         "benchmark": benchmark,
@@ -206,7 +288,7 @@ def validate_cute_m7() -> dict[str, object]:
 @app.local_entrypoint()
 def main() -> None:
     """Invoke the optional H100 validator and print retained evidence."""
-    result = validate_cute_m7.remote()
-    print("M7_CUTE_H100_ACCEPTANCE=PASS")
+    result = validate_cute_h100.remote()
+    print("CUTE_H100_ACCEPTANCE=PASS")
     for name, value in result.items():
         print(f"{name}={value}")

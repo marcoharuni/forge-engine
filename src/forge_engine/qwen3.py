@@ -115,12 +115,8 @@ class Qwen3Attention(nn.Module):
         self.q_proj = nn.Linear(
             config.hidden_size, query_size, bias=config.attention_bias
         )
-        self.k_proj = nn.Linear(
-            config.hidden_size, kv_size, bias=config.attention_bias
-        )
-        self.v_proj = nn.Linear(
-            config.hidden_size, kv_size, bias=config.attention_bias
-        )
+        self.k_proj = nn.Linear(config.hidden_size, kv_size, bias=config.attention_bias)
+        self.v_proj = nn.Linear(config.hidden_size, kv_size, bias=config.attention_bias)
         self.o_proj = nn.Linear(
             query_size, config.hidden_size, bias=config.attention_bias
         )
@@ -152,9 +148,11 @@ class Qwen3Attention(nn.Module):
                 batch, query_length, self.num_kv_heads, self.head_dim
             )
         ).transpose(1, 2)
-        value = self.v_proj(hidden_states).view(
-            batch, query_length, self.num_kv_heads, self.head_dim
-        ).transpose(1, 2)
+        value = (
+            self.v_proj(hidden_states)
+            .view(batch, query_length, self.num_kv_heads, self.head_dim)
+            .transpose(1, 2)
+        )
         cosine, sine = _rotary_embeddings(
             position_ids, self.head_dim, self.rope_theta, hidden_states.dtype
         )
@@ -172,8 +170,10 @@ class Qwen3Attention(nn.Module):
                 past_key_value.sequence_length,
                 scale=self.scaling,
             )
-            output = output.transpose(1, 2).contiguous().view(
-                batch, query_length, self.num_heads * self.head_dim
+            output = (
+                output.transpose(1, 2)
+                .contiguous()
+                .view(batch, query_length, self.num_heads * self.head_dim)
             )
             return self.o_proj(output), (key, value)
         if past_key_value is not None:
@@ -197,12 +197,12 @@ class Qwen3Attention(nn.Module):
             device=weights.device,
             attention_mask=attention_mask,
         )
-        probabilities = F.softmax(weights, dim=-1, dtype=torch.float32).to(
-            query.dtype
-        )
+        probabilities = F.softmax(weights, dim=-1, dtype=torch.float32).to(query.dtype)
         output = torch.matmul(probabilities, repeated_value)
-        output = output.transpose(1, 2).contiguous().view(
-            batch, query_length, self.num_heads * self.head_dim
+        output = (
+            output.transpose(1, 2)
+            .contiguous()
+            .view(batch, query_length, self.num_heads * self.head_dim)
         )
         return self.o_proj(output), (key, value)
 
@@ -224,9 +224,7 @@ class Qwen3MLP(nn.Module):
 
     def forward(self, inputs: Tensor) -> Tensor:
         """Apply the gated feed-forward projection."""
-        return self.down_proj(
-            F.silu(self.gate_proj(inputs)) * self.up_proj(inputs)
-        )
+        return self.down_proj(F.silu(self.gate_proj(inputs)) * self.up_proj(inputs))
 
 
 class Qwen3DecoderLayer(nn.Module):
@@ -236,12 +234,8 @@ class Qwen3DecoderLayer(nn.Module):
         super().__init__()
         self.self_attn = Qwen3Attention(config)
         self.mlp = Qwen3MLP(config)
-        self.input_layernorm = RMSNorm(
-            config.hidden_size, config.rms_norm_eps
-        )
-        self.post_attention_layernorm = RMSNorm(
-            config.hidden_size, config.rms_norm_eps
-        )
+        self.input_layernorm = RMSNorm(config.hidden_size, config.rms_norm_eps)
+        self.post_attention_layernorm = RMSNorm(config.hidden_size, config.rms_norm_eps)
 
     def forward(
         self,
@@ -263,9 +257,7 @@ class Qwen3DecoderLayer(nn.Module):
             self.post_attention_layernorm.weight,
             self.post_attention_layernorm.epsilon,
         )
-        hidden_states = hidden_states + self.mlp(
-            normalized
-        )
+        hidden_states = hidden_states + self.mlp(normalized)
         return hidden_states, present
 
 
@@ -286,12 +278,9 @@ class Qwen3ForCausalLM(nn.Module):
         super().__init__()
         self.config = config
         self.model = nn.Module()
-        self.model.embed_tokens = nn.Embedding(
-            config.vocab_size, config.hidden_size
-        )
+        self.model.embed_tokens = nn.Embedding(config.vocab_size, config.hidden_size)
         self.model.layers = nn.ModuleList(
-            Qwen3DecoderLayer(config)
-            for _ in range(config.num_hidden_layers)
+            Qwen3DecoderLayer(config) for _ in range(config.num_hidden_layers)
         )
         self.model.norm = RMSNorm(config.hidden_size, config.rms_norm_eps)
 
@@ -344,9 +333,7 @@ class Qwen3ForCausalLM(nn.Module):
             if use_cache:
                 presents.append(present)
         last_hidden_state = self.model.norm(hidden_states)
-        logits = F.linear(
-            last_hidden_state, self.model.embed_tokens.weight
-        ).float()
+        logits = F.linear(last_hidden_state, self.model.embed_tokens.weight).float()
         return Qwen3Output(
             logits=logits,
             past_key_values=tuple(presents),
@@ -413,13 +400,9 @@ def _causal_mask(
     )
     if attention_mask is not None:
         if tuple(attention_mask.shape) != (batch, key_length):
-            raise ValueError(
-                "attention_mask must match the complete cached sequence"
-            )
+            raise ValueError("attention_mask must match the complete cached sequence")
         allowed = allowed & attention_mask[:, None, None, :].bool()
-    mask = torch.zeros(
-        (batch, 1, query_length, key_length), dtype=dtype, device=device
-    )
+    mask = torch.zeros((batch, 1, query_length, key_length), dtype=dtype, device=device)
     return mask.masked_fill(~allowed, torch.finfo(dtype).min)
 
 
@@ -439,9 +422,7 @@ def _validate_inputs(
         raise ValueError("attention_mask must be on the model device")
 
 
-def _validate_past(
-    key: Tensor, value: Tensor, batch: int, num_kv_heads: int
-) -> None:
+def _validate_past(key: Tensor, value: Tensor, batch: int, num_kv_heads: int) -> None:
     """Guard a contiguous KV pair before appending new tokens."""
     if key.shape != value.shape or key.ndim != 4:
         raise ValueError("cached key/value tensors must have matching rank-4 shapes")

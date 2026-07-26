@@ -26,10 +26,7 @@ def _capture_artifacts(name: str, compiled: object) -> None:
 
 def triton_kernel_artifacts() -> dict[str, dict[str, str | bytes]]:
     """Return generated artifacts captured by successful kernel launches."""
-    return {
-        name: dict(artifacts)
-        for name, artifacts in _LAST_ARTIFACTS.items()
-    }
+    return {name: dict(artifacts) for name, artifacts in _LAST_ARTIFACTS.items()}
 
 
 @triton.jit
@@ -147,13 +144,10 @@ def _restricted_causal_prefill_kernel(
             mask=allowed[:, None],
             other=0.0,
         ).to(tl.float32)
-        accumulator = (
-            accumulator * correction
-            + tl.sum(probabilities[:, None] * values, axis=0)
+        accumulator = accumulator * correction + tl.sum(
+            probabilities[:, None] * values, axis=0
         )
-        denominator = (
-            denominator * correction + tl.sum(probabilities, axis=0)
-        )
+        denominator = denominator * correction + tl.sum(probabilities, axis=0)
         maximum = next_maximum
     tl.store(
         output_pointer
@@ -173,9 +167,7 @@ def triton_restricted_causal_prefill(
     """Launch the batch-one, head-dimension-128 causal prefill lab."""
     output = torch.empty_like(query)
     sequence_length = query.shape[2]
-    compiled = _restricted_causal_prefill_kernel[
-        (sequence_length, query.shape[1])
-    ](
+    compiled = _restricted_causal_prefill_kernel[(sequence_length, query.shape[1])](
         query,
         key,
         value,

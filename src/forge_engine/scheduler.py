@@ -189,9 +189,7 @@ class ConcurrentGenerationEngine:
     @property
     def idle(self) -> bool:
         """Return whether no admitted request still needs work."""
-        return all(
-            request.status.terminal for request in self._requests.values()
-        )
+        return all(request.status.terminal for request in self._requests.values())
 
     @property
     def cache_pool(self) -> PagedKVBlockPool:
@@ -207,16 +205,11 @@ class ConcurrentGenerationEngine:
     ) -> str:
         """Tokenize and reserve worst-case blocks before accepting work."""
         active_count = sum(
-            not request.status.terminal
-            for request in self._requests.values()
+            not request.status.terminal for request in self._requests.values()
         )
         if active_count >= self._config.max_requests:
-            raise OverloadedError(
-                f"request limit {self._config.max_requests} is full"
-            )
-        assigned_id = (
-            self._new_request_id() if request_id is None else request_id
-        )
+            raise OverloadedError(f"request limit {self._config.max_requests} is full")
+        assigned_id = self._new_request_id() if request_id is None else request_id
         if assigned_id in self._requests:
             raise ValueError(f"duplicate request_id: {assigned_id}")
         params = (
@@ -230,9 +223,7 @@ class ConcurrentGenerationEngine:
             add_generation_prompt=True,
             return_tensors="pt",
         )
-        input_ids, attention_mask = _normalize_tokenizer_output(
-            tokenizer_output
-        )
+        input_ids, attention_mask = _normalize_tokenizer_output(tokenizer_output)
         if input_ids.shape[0] != 1 or input_ids.shape[1] < 1:
             raise ValueError("each request must contain one non-empty prompt")
         prompt_tokens = int(input_ids.shape[1])
@@ -286,8 +277,7 @@ class ConcurrentGenerationEngine:
         self._last_batch = tuple(request.request_id for request in selected)
         groups = self._group_selected(selected)
         self._last_model_batches = tuple(
-            tuple(request.request_id for request in group)
-            for group in groups
+            tuple(request.request_id for request in group) for group in groups
         )
         self._iteration += 1
         events: list[StreamEvent] = []
@@ -302,9 +292,7 @@ class ConcurrentGenerationEngine:
                     elif status is RequestStatus.RUNNING:
                         events.extend(self._decode_group(group, torch))
                     else:
-                        raise RuntimeError(
-                            f"unsupported request state: {status}"
-                        )
+                        raise RuntimeError(f"unsupported request state: {status}")
                 except Exception as error:
                     for request in group:
                         request.status = RequestStatus.FAILED
@@ -362,12 +350,10 @@ class ConcurrentGenerationEngine:
         return SchedulerSnapshot(
             iteration=self._iteration,
             waiting=sum(
-                request.status is RequestStatus.WAITING
-                for request in requests
+                request.status is RequestStatus.WAITING for request in requests
             ),
             running=sum(
-                request.status is RequestStatus.RUNNING
-                for request in requests
+                request.status is RequestStatus.RUNNING for request in requests
             ),
             terminal=sum(request.status.terminal for request in requests),
             reserved_blocks=self._reserved_blocks,
@@ -387,19 +373,14 @@ class ConcurrentGenerationEngine:
             if request.status.terminal:
                 continue
             cost = (
-                request.prompt_tokens
-                if request.status is RequestStatus.WAITING
-                else 1
+                request.prompt_tokens if request.status is RequestStatus.WAITING else 1
             )
             fits = cost <= remaining_budget
             if fits or not selected:
                 selected.append(request)
                 remaining_budget = max(0, remaining_budget - cost)
             self._order.append(request_id)
-            if (
-                len(selected) >= self._config.max_batch_size
-                or remaining_budget == 0
-            ):
+            if len(selected) >= self._config.max_batch_size or remaining_budget == 0:
                 break
         return selected
 
@@ -439,9 +420,7 @@ class ConcurrentGenerationEngine:
         for request in requests:
             request.input_ids = request.input_ids.to(self._model.device)
             if request.attention_mask is not None:
-                request.attention_mask = request.attention_mask.to(
-                    self._model.device
-                )
+                request.attention_mask = request.attention_mask.to(self._model.device)
             _validate_input_ids(request.input_ids, torch)
             _validate_attention_mask(
                 request.attention_mask,
@@ -509,18 +488,14 @@ class ConcurrentGenerationEngine:
                 fragments.append(fragment)
             should_finish = request.detokenizer.stopped
         stopped = request.detokenizer.stopped
-        reached_limit = (
-            request.sampled_tokens >= request.params.max_new_tokens
-        )
+        reached_limit = request.sampled_tokens >= request.params.max_new_tokens
         should_finish = should_finish or reached_limit
         if should_finish:
             final_fragment = request.detokenizer.finish()
             if final_fragment:
                 fragments.append(final_fragment)
             request.status = RequestStatus.FINISHED
-            request.finish_reason = (
-                "stop" if reached_eos or stopped else "length"
-            )
+            request.finish_reason = "stop" if reached_eos or stopped else "length"
             self._cleanup(request)
         else:
             request.pending_token = next_token

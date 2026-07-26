@@ -1,4 +1,4 @@
-"""Build the release Dockerfile and smoke-test it on one Modal L4."""
+"""Build the release Dockerfile and smoke-test it on one L4."""
 
 from __future__ import annotations
 
@@ -11,12 +11,12 @@ from pathlib import Path
 
 import modal
 
-APP_NAME = "forge-engine-m9-docker-validation"
+from forge_engine.config import DEFAULT_MODEL_ID, SUPPORTED_MODEL_REVISION
+
+APP_NAME = "forge-engine-docker-l4-validation"
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 PORT = 8765
 EXPECTED_PREFIX = "1 2 3 4"
-DEFAULT_MODEL_ID = "Qwen/Qwen3-4B-Instruct-2507"
-SUPPORTED_MODEL_REVISION = "cdbee75f17c01a7cc42f958dc650907174af0554"
 
 docker_image = modal.Image.from_dockerfile(
     REPOSITORY_ROOT / "Dockerfile",
@@ -36,7 +36,7 @@ hf_cache_volume = modal.Volume.from_name(
     timeout=30 * 60,
     volumes={"/cache": hf_cache_volume},
 )
-def validate_docker_m9() -> dict[str, object]:
+def validate_docker_l4() -> dict[str, object]:
     """Start the packaged service and validate health plus streaming chat."""
     python = "/opt/forge-venv/bin/python"
     environment = json.loads(
@@ -116,8 +116,7 @@ def validate_docker_m9() -> dict[str, object]:
                     {
                         "role": "user",
                         "content": (
-                            "Write the first ten positive integers "
-                            "separated by spaces."
+                            "Write the first ten positive integers separated by spaces."
                         ),
                     }
                 ],
@@ -135,9 +134,7 @@ def validate_docker_m9() -> dict[str, object]:
         saw_done = False
         with urllib.request.urlopen(request, timeout=180.0) as response:
             if response.status != 200:
-                raise RuntimeError(
-                    f"Docker chat returned HTTP {response.status}"
-                )
+                raise RuntimeError(f"Docker chat returned HTTP {response.status}")
             if not response.headers.get("X-Forge-Request-ID"):
                 raise RuntimeError("Docker chat omitted request ID header")
             for raw_line in response:
@@ -181,13 +178,9 @@ def validate_docker_m9() -> dict[str, object]:
             except subprocess.TimeoutExpired:
                 process.kill()
                 process.wait(timeout=10.0)
-        server_log = (
-            process.stdout.read()
-            if process.stdout is not None
-            else ""
-        )
+        server_log = process.stdout.read() if process.stdout is not None else ""
         print(server_log, end="", flush=True)
-        print(f"M9_DOCKER_SERVER_EXIT={process.returncode}", flush=True)
+        print(f"DOCKER_L4_SERVER_EXIT={process.returncode}", flush=True)
 
     if (
         "fatal error:" in server_log
@@ -205,7 +198,7 @@ def validate_docker_m9() -> dict[str, object]:
 @app.local_entrypoint()
 def main() -> None:
     """Build and invoke the actual Docker release image."""
-    result = validate_docker_m9.remote()
-    print("M9_DOCKER_ACCEPTANCE=PASS")
+    result = validate_docker_l4.remote()
+    print("DOCKER_L4_ACCEPTANCE=PASS")
     for name, value in result.items():
         print(f"{name}={value}")

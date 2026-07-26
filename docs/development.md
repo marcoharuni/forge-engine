@@ -49,7 +49,7 @@ its guards reject the input.
   cancellation, SSE, health, and metrics.
 - `tests/test_kernels.py`, `test_cuda_paged.py`, and `test_cute_swiglu.py`
   cover reference paths, guards, and fallbacks.
-- `tools/modal_l4_validate*.py` provide real-L4 acceptance evidence.
+- `tools/validate_l4.py` provides consolidated real-L4 acceptance evidence.
 
 ## Documentation
 

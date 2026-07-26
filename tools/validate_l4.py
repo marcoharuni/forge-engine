@@ -1,41 +1,67 @@
-"""Run Milestone 7 kernel correctness and evidence checks on one Modal L4."""
+"""Run consolidated correctness, kernel, and serving checks on one L4."""
 
 from __future__ import annotations
 
+import json
 import re
 import statistics
 import subprocess
 import sys
+import time
 from collections.abc import Callable
 from pathlib import Path
 
 import modal
 
-from forge_engine.config import SUPPORTED_MODEL_REVISION
-from tools.modal_l4_validate import (
-    HF_HOME,
-    REMOTE_REPOSITORY,
-    REPOSITORY_IGNORES,
-    REPOSITORY_ROOT,
-    hf_cache_volume,
-)
+from forge_engine.config import DEFAULT_MODEL_ID, SUPPORTED_MODEL_REVISION
 
-APP_NAME = "forge-engine-m7-validation"
+APP_NAME = "forge-engine-l4-validation"
+REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
+REMOTE_REPOSITORY = Path("/repo")
+HF_HOME = Path("/cache/huggingface")
 PROMPT = "Write the first ten positive integers separated by spaces."
 EXPECTED_PREFIX = "1 2 3 4 "
 DECODE_STEPS = 8
 WARMUP_ITERATIONS = 10
 BENCHMARK_ITERATIONS = 50
 PROBABILITY_TV_LIMIT = 0.05
-ARTIFACT_DIRECTORY = Path("/tmp/forge-m7-artifacts")
+ARTIFACT_DIRECTORY = Path("/tmp/forge-l4-artifacts")
+REPOSITORY_IGNORES = [
+    ".git",
+    ".git/**",
+    ".venv",
+    ".venv/**",
+    ".agents",
+    ".agents/**",
+    ".codex",
+    ".codex/**",
+    "**/__pycache__/**",
+    "**/.pytest_cache/**",
+    "**/target/**",
+    "*.safetensors",
+    "models/**",
+]
+RUST_CLIENT = (
+    REMOTE_REPOSITORY / "rust" / "streamer" / "target" / "release" / "forge-streamer"
+)
+SERVING_PORT = 8765
+SERVING_REQUESTS = 8
+SERVING_CONCURRENCY = 4
+SERVING_CANCEL_EVERY = 4
 
-m7_image = (
+l4_image = (
     modal.Image.from_registry(
         "nvidia/cuda:13.0.3-devel-ubuntu22.04",
         add_python="3.11",
     )
     .entrypoint([])
-    .apt_install("binutils", "ninja-build")
+    .apt_install(
+        "binutils",
+        "build-essential",
+        "ca-certificates",
+        "curl",
+        "ninja-build",
+    )
     .add_local_dir(
         REPOSITORY_ROOT,
         remote_path=str(REMOTE_REPOSITORY),
@@ -43,6 +69,13 @@ m7_image = (
         ignore=REPOSITORY_IGNORES,
     )
     .run_commands('python -m pip install "/repo[dev]"')
+    .run_commands(
+        "curl --proto '=https' --tlsv1.2 -sSf "
+        "https://sh.rustup.rs -o /tmp/rustup-init.sh",
+        "sh /tmp/rustup-init.sh -y --profile minimal --default-toolchain stable",
+        "/root/.cargo/bin/cargo build --release --locked "
+        "--manifest-path /repo/rust/streamer/Cargo.toml",
+    )
     .env(
         {
             "HF_HOME": str(HF_HOME),
@@ -56,6 +89,10 @@ m7_image = (
 )
 
 app = modal.App(APP_NAME)
+hf_cache_volume = modal.Volume.from_name(
+    "forge-engine-hf-cache",
+    create_if_missing=True,
+)
 
 
 def _record(
@@ -63,10 +100,21 @@ def _record(
     message: str,
     failures: list[str],
 ) -> None:
-    """Collect one failure so independent M7 phases can still run."""
+    """Collect one failure so independent L4 phases can still run."""
     if not condition:
         failures.append(message)
-        print(f"M7_CHECK_FAILURE={message}", flush=True)
+        print(f"L4_CHECK_FAILURE={message}", flush=True)
+
+
+def _parse_metrics(text: str) -> dict[str, float]:
+    """Parse numeric Prometheus samples."""
+    values: dict[str, float] = {}
+    for line in text.splitlines():
+        if not line or line.startswith("#"):
+            continue
+        name, value = line.rsplit(" ", 1)
+        values[name] = float(value)
+    return values
 
 
 def _tool_version(command: list[str]) -> str:
@@ -100,12 +148,10 @@ def _benchmark_cuda(
         torch.cuda.reset_peak_memory_stats()
         allocated_before = int(torch.cuda.memory_allocated())
         starts = [
-            torch.cuda.Event(enable_timing=True)
-            for _ in range(BENCHMARK_ITERATIONS)
+            torch.cuda.Event(enable_timing=True) for _ in range(BENCHMARK_ITERATIONS)
         ]
         ends = [
-            torch.cuda.Event(enable_timing=True)
-            for _ in range(BENCHMARK_ITERATIONS)
+            torch.cuda.Event(enable_timing=True) for _ in range(BENCHMARK_ITERATIONS)
         ]
         for start, end in zip(starts, ends, strict=True):
             start.record()
@@ -113,8 +159,7 @@ def _benchmark_cuda(
             end.record()
         torch.cuda.synchronize()
     elapsed_ms = [
-        float(start.elapsed_time(end))
-        for start, end in zip(starts, ends, strict=True)
+        float(start.elapsed_time(end)) for start, end in zip(starts, ends, strict=True)
     ]
     ordered = sorted(elapsed_ms)
     median_ms = float(statistics.median(ordered))
@@ -242,25 +287,296 @@ def _probability_tv(torch: object, left: object, right: object) -> float:
     left_probabilities = torch.softmax(left.float(), dim=-1)
     right_probabilities = torch.softmax(right.float(), dim=-1)
     return float(
-        (
-            0.5
-            * (left_probabilities - right_probabilities)
-            .abs()
-            .sum(dim=-1)
-        )
+        (0.5 * (left_probabilities - right_probabilities).abs().sum(dim=-1))
         .max()
         .item()
     )
 
 
+def _validate_serving(failures: list[str]) -> dict[str, object]:
+    """Validate the final HTTP path with the external Rust client."""
+    import httpx
+
+    server_command = [
+        "forge-engine",
+        "serve",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        str(SERVING_PORT),
+        "--max-new-tokens",
+        "32",
+        "--max-requests",
+        "8",
+        "--max-batch-size",
+        "4",
+        "--token-budget",
+        "192",
+        "--block-capacity",
+        "128",
+    ]
+    print(f"L4_SERVER_COMMAND={' '.join(server_command)}", flush=True)
+    server = subprocess.Popen(
+        server_command,
+        cwd=REMOTE_REPOSITORY,
+        stderr=subprocess.STDOUT,
+    )
+    base_url = f"http://127.0.0.1:{SERVING_PORT}"
+    warmup_text = ""
+    report: dict[str, object] = {}
+    benchmark: dict[str, object] = {}
+    try:
+        deadline = time.monotonic() + 180.0
+        with httpx.Client(
+            base_url=base_url,
+            timeout=2.0,
+            trust_env=False,
+        ) as client:
+            while time.monotonic() < deadline:
+                if server.poll() is not None:
+                    raise RuntimeError(
+                        f"server exited during startup with {server.returncode}"
+                    )
+                try:
+                    response = client.get("/health")
+                    if response.status_code == 200:
+                        health = response.json()
+                        break
+                except httpx.HTTPError:
+                    pass
+                time.sleep(0.25)
+            else:
+                raise RuntimeError("server did not become healthy in 180s")
+
+        _record(
+            health.get("model") == DEFAULT_MODEL_ID
+            and health.get("revision") == SUPPORTED_MODEL_REVISION,
+            f"unexpected health identity: {health!r}",
+            failures,
+        )
+
+        warmup = subprocess.run(
+            [
+                str(RUST_CLIENT),
+                "chat",
+                "--base-url",
+                base_url,
+                "--prompt",
+                PROMPT,
+                "--max-tokens",
+                "8",
+            ],
+            cwd=REMOTE_REPOSITORY,
+            text=True,
+            capture_output=True,
+            timeout=180.0,
+            check=False,
+        )
+        print(warmup.stderr, end="", flush=True)
+        # The deterministic output intentionally ends with a space. Remove only
+        # the line ending written by the CLI, not semantic model whitespace.
+        warmup_text = warmup.stdout.rstrip("\r\n")
+        _record(
+            warmup.returncode == 0 and warmup_text.startswith(EXPECTED_PREFIX),
+            (
+                f"warm-up chat exit={warmup.returncode}, "
+                f"output={warmup_text!r}, stderr={warmup.stderr!r}"
+            ),
+            failures,
+        )
+
+        with httpx.Client(
+            base_url=base_url,
+            timeout=10.0,
+            trust_env=False,
+        ) as client:
+            before = _parse_metrics(client.get("/metrics").text)
+
+        load = subprocess.Popen(
+            [
+                str(RUST_CLIENT),
+                "load",
+                "--base-url",
+                base_url,
+                "--prompt",
+                ("Write the first one hundred positive integers separated by spaces."),
+                "--max-tokens",
+                "32",
+                "--requests",
+                str(SERVING_REQUESTS),
+                "--concurrency",
+                str(SERVING_CONCURRENCY),
+                "--cancel-every",
+                str(SERVING_CANCEL_EVERY),
+                "--cancel-after-events",
+                "0",
+                "--cancel-max-tokens",
+                "512",
+                "--metrics-timeout-seconds",
+                "30",
+            ],
+            cwd=REMOTE_REPOSITORY,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        max_active = 0
+        poll_failures = 0
+        poll_started = time.monotonic()
+        with httpx.Client(
+            base_url=base_url,
+            timeout=2.0,
+            trust_env=False,
+        ) as client:
+            while load.poll() is None:
+                try:
+                    current = _parse_metrics(client.get("/metrics").text)
+                    max_active = max(
+                        max_active,
+                        int(current.get("forge_requests_active", 0.0)),
+                    )
+                except httpx.HTTPError:
+                    poll_failures += 1
+                if time.monotonic() - poll_started > 300.0:
+                    load.kill()
+                    raise RuntimeError("Rust load exceeded 300 seconds")
+                time.sleep(0.02)
+        stdout, stderr = load.communicate(timeout=10.0)
+        print(stderr, end="", flush=True)
+        _record(
+            load.returncode == 0,
+            f"Rust load exited {load.returncode}: {stderr!r}",
+            failures,
+        )
+        try:
+            report = json.loads(stdout)
+        except json.JSONDecodeError as error:
+            failures.append(f"Rust load emitted invalid JSON: {error}")
+            report = {}
+
+        with httpx.Client(
+            base_url=base_url,
+            timeout=10.0,
+            trust_env=False,
+        ) as client:
+            after = _parse_metrics(client.get("/metrics").text)
+            final_health = client.get("/health").json()
+
+        client_report = report.get("client", {})
+        server_delta = report.get("server_delta", {})
+        agreement = report.get("agreement", {})
+        results = report.get("results", [])
+        expected_cancelled = SERVING_REQUESTS // SERVING_CANCEL_EVERY
+        expected_finished = SERVING_REQUESTS - expected_cancelled
+        finished_outputs = [
+            result.get("text", "")
+            for result in results
+            if result.get("status") == "finished"
+        ]
+        _record(
+            client_report.get("finished") == expected_finished
+            and client_report.get("cancelled") == expected_cancelled
+            and client_report.get("failed") == 0,
+            f"unexpected client result counts: {client_report!r}",
+            failures,
+        )
+        _record(
+            agreement.get("passed") is True,
+            f"client/server metrics disagreed: {agreement!r}",
+            failures,
+        )
+        _record(
+            len(finished_outputs) == expected_finished
+            and all(output.startswith(EXPECTED_PREFIX) for output in finished_outputs),
+            f"finished outputs failed deterministic prefix: {finished_outputs!r}",
+            failures,
+        )
+        _record(
+            max_active >= 2,
+            f"maximum observed active requests was {max_active}",
+            failures,
+        )
+        scheduler = final_health["scheduler"]
+        _record(
+            scheduler["waiting"] == 0
+            and scheduler["running"] == 0
+            and scheduler["reserved_blocks"] == 0
+            and scheduler["allocated_blocks"] == 0,
+            f"final scheduler state was {scheduler!r}",
+            failures,
+        )
+        generated_tokens = int(
+            after["forge_generated_tokens_total"]
+            - before["forge_generated_tokens_total"]
+        )
+        wall_seconds = float(client_report.get("wall_seconds", 0.0))
+        _record(
+            generated_tokens > 0 and wall_seconds > 0.0,
+            (
+                f"invalid throughput inputs: tokens={generated_tokens}, "
+                f"wall={wall_seconds}"
+            ),
+            failures,
+        )
+        benchmark = {
+            "warmup_requests": 1,
+            "measured_requests": SERVING_REQUESTS,
+            "concurrency_limit": SERVING_CONCURRENCY,
+            "generated_tokens": generated_tokens,
+            "wall_seconds": wall_seconds,
+            "throughput_tokens_per_second": (
+                generated_tokens / wall_seconds if wall_seconds > 0.0 else None
+            ),
+            "max_observed_active_requests": max_active,
+            "peak_cuda_allocated_bytes": int(
+                after['forge_cuda_memory_bytes{state="peak_allocated"}']
+            ),
+            "metrics_poll_failures": poll_failures,
+            "client_latency_seconds": {
+                "mean_ttft": client_report.get("mean_ttft_seconds"),
+                "mean_itl": client_report.get("mean_itl_seconds"),
+                "p50_duration": client_report.get("p50_duration_seconds"),
+                "p95_duration": client_report.get("p95_duration_seconds"),
+            },
+            "server_latency_seconds": {
+                "mean_ttft": server_delta.get("mean_ttft_seconds"),
+                "mean_itl": server_delta.get("mean_itl_seconds"),
+                "mean_duration": server_delta.get("mean_duration_seconds"),
+            },
+        }
+        print(
+            f"L4_SERVING_BENCHMARK={json.dumps(benchmark, sort_keys=True)}",
+            flush=True,
+        )
+    except BaseException as error:
+        failures.append(f"serving validation raised {error!r}")
+        print(f"L4_SERVING_EXCEPTION={error!r}", flush=True)
+    finally:
+        if server.poll() is None:
+            server.terminate()
+            try:
+                server.wait(timeout=30.0)
+            except subprocess.TimeoutExpired:
+                server.kill()
+                server.wait(timeout=10.0)
+        print(f"L4_SERVER_EXIT={server.returncode}", flush=True)
+    return {
+        "warmup_chat": warmup_text,
+        "client": report.get("client", {}),
+        "server_delta": report.get("server_delta", {}),
+        "agreement": report.get("agreement", {}),
+        "benchmark": benchmark,
+    }
+
+
 @app.function(
-    image=m7_image,
+    image=l4_image,
     gpu="L4",
     timeout=30 * 60,
     volumes={"/cache": hf_cache_volume},
 )
-def validate_m7() -> dict[str, object]:
-    """Validate M7 L4 kernels, integration, measurements, and artifacts."""
+def validate_l4() -> dict[str, object]:
+    """Validate L4 kernels, integration, measurements, and artifacts."""
     import torch
     import transformers
     import triton
@@ -299,12 +615,23 @@ def validate_m7() -> dict[str, object]:
     if "L4" not in device_name:
         raise RuntimeError(f"expected an L4 GPU, found {device_name!r}")
     if not torch.cuda.is_bf16_supported():
-        raise RuntimeError("M7 acceptance requires L4 BF16 support")
+        raise RuntimeError("L4 acceptance requires BF16 support")
+    driver = subprocess.run(
+        [
+            "nvidia-smi",
+            "--query-gpu=driver_version",
+            "--format=csv,noheader",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
     software = {
         "gpu": device_name,
         "compute_capability": ".".join(
             str(part) for part in torch.cuda.get_device_capability(0)
         ),
+        "driver": driver,
         "torch": torch.__version__,
         "cuda": torch.version.cuda,
         "transformers": transformers.__version__,
@@ -314,11 +641,23 @@ def validate_m7() -> dict[str, object]:
         "precision": "bfloat16",
         "model_revision": SUPPORTED_MODEL_REVISION,
     }
-    print(f"M7_SOFTWARE={software}", flush=True)
+    print(f"L4_SOFTWARE={software}", flush=True)
     (ARTIFACT_DIRECTORY / "triton").mkdir(parents=True, exist_ok=True)
 
     subprocess.run(
         [sys.executable, "-m", "pytest", "-q"],
+        cwd=REMOTE_REPOSITORY,
+        check=True,
+    )
+    subprocess.run(
+        [
+            "/root/.cargo/bin/cargo",
+            "test",
+            "--release",
+            "--locked",
+            "--manifest-path",
+            str(REMOTE_REPOSITORY / "rust" / "streamer" / "Cargo.toml"),
+        ],
         cwd=REMOTE_REPOSITORY,
         check=True,
     )
@@ -385,10 +724,10 @@ def validate_m7() -> dict[str, object]:
                 throughput_unit="elements/s",
             ),
         }
-        print("M7_TRITON_RMS=PASS", flush=True)
+        print("L4_TRITON_RMS=PASS", flush=True)
     except BaseException as error:
         failures.append(f"Triton residual RMS phase raised {error!r}")
-        print(f"M7_TRITON_RMS_EXCEPTION={error!r}", flush=True)
+        print(f"L4_TRITON_RMS_EXCEPTION={error!r}", flush=True)
 
     query = torch.randn(
         (1, 8, 128, 128),
@@ -447,10 +786,10 @@ def validate_m7() -> dict[str, object]:
             ),
             "maximum_absolute_error": prefill_error,
         }
-        print("M7_TRITON_PREFILL_LAB=PASS", flush=True)
+        print("L4_TRITON_PREFILL_LAB=PASS", flush=True)
     except BaseException as error:
         failures.append(f"restricted Triton prefill phase raised {error!r}")
-        print(f"M7_TRITON_PREFILL_EXCEPTION={error!r}", flush=True)
+        print(f"L4_TRITON_PREFILL_EXCEPTION={error!r}", flush=True)
 
     past_length = 127
     block_size = 16
@@ -507,9 +846,7 @@ def validate_m7() -> dict[str, object]:
             failures,
         )
         benchmarks["cuda_paged_gqa_decode"] = {
-            "workload": (
-                "past=127, block=16, Q=32, KV=8, head_dim=128, BF16"
-            ),
+            "workload": ("past=127, block=16, Q=32, KV=8, head_dim=128, BF16"),
             "custom": _benchmark_cuda(
                 torch,
                 lambda: paged_gqa_decode(
@@ -539,10 +876,10 @@ def validate_m7() -> dict[str, object]:
             ),
             "maximum_absolute_error": decode_error,
         }
-        print("M7_CUDA_PAGED_GQA=PASS", flush=True)
+        print("L4_CUDA_PAGED_GQA=PASS", flush=True)
     except BaseException as error:
         failures.append(f"CUDA paged GQA phase raised {error!r}")
-        print(f"M7_CUDA_PAGED_GQA_EXCEPTION={error!r}", flush=True)
+        print(f"L4_CUDA_PAGED_GQA_EXCEPTION={error!r}", flush=True)
 
     cute_evidence: dict[str, object] = {}
     try:
@@ -593,10 +930,10 @@ def validate_m7() -> dict[str, object]:
             "strict_guard_verified": strict_rejected,
             "required_hardware": "H100 or B200",
         }
-        print("M7_CUTE_LAB=SKIP_L4_HARDWARE", flush=True)
+        print("L4_CUTE_LAB=SKIP_L4_HARDWARE", flush=True)
     except BaseException as error:
         failures.append(f"CuTe fallback phase raised {error!r}")
-        print(f"M7_CUTE_FALLBACK_EXCEPTION={error!r}", flush=True)
+        print(f"L4_CUTE_FALLBACK_EXCEPTION={error!r}", flush=True)
 
     model_evidence: dict[str, object] = {}
     try:
@@ -718,38 +1055,38 @@ def validate_m7() -> dict[str, object]:
             "maximum_probability_tv": maximum_tv,
             "strict_triton_and_cuda_integration": True,
         }
-        print(f"M7_MODEL_INTEGRATION={model_evidence}", flush=True)
+        print(f"L4_MODEL_INTEGRATION={model_evidence}", flush=True)
     except BaseException as error:
         failures.append(f"strict model integration phase raised {error!r}")
-        print(f"M7_MODEL_INTEGRATION_EXCEPTION={error!r}", flush=True)
+        print(f"L4_MODEL_INTEGRATION_EXCEPTION={error!r}", flush=True)
 
     artifacts: dict[str, object] = {}
     try:
         artifacts = _inspect_artifacts(failures)
-        print(f"M7_PTX_SASS={artifacts}", flush=True)
+        print(f"L4_PTX_SASS={artifacts}", flush=True)
     except BaseException as error:
         failures.append(f"PTX/SASS inspection phase raised {error!r}")
-        print(f"M7_ARTIFACT_EXCEPTION={error!r}", flush=True)
+        print(f"L4_ARTIFACT_EXCEPTION={error!r}", flush=True)
 
-    print(f"M7_BENCHMARKS={benchmarks}", flush=True)
+    serving_evidence = _validate_serving(failures)
+    print(f"L4_KERNEL_BENCHMARKS={benchmarks}", flush=True)
     hf_cache_volume.commit()
     if failures:
-        raise AssertionError(
-            "M7 acceptance failed:\n- " + "\n- ".join(failures)
-        )
+        raise AssertionError("L4 acceptance failed:\n- " + "\n- ".join(failures))
     return {
         "software": software,
         "benchmarks": benchmarks,
         "artifacts": artifacts,
         "model": model_evidence,
         "cute": cute_evidence,
+        "serving": serving_evidence,
     }
 
 
 @app.local_entrypoint()
 def main() -> None:
-    """Invoke the M7 validator and print its retained evidence."""
-    result = validate_m7.remote()
-    print("M7_ACCEPTANCE=PASS")
+    """Invoke the consolidated L4 validator and print retained evidence."""
+    result = validate_l4.remote()
+    print("L4_ACCEPTANCE=PASS")
     for name, value in result.items():
         print(f"{name}={value}")

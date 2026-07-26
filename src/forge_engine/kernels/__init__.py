@@ -78,9 +78,7 @@ def causal_prefill_attention_reference(
     import torch
     from torch.nn import functional as F
 
-    effective_scale = (
-        query.shape[-1] ** -0.5 if scale is None else scale
-    )
+    effective_scale = query.shape[-1] ** -0.5 if scale is None else scale
     scores = torch.matmul(query.float(), key.float().transpose(-2, -1))
     scores = scores * effective_scale
     sequence_length = query.shape[-2]
@@ -188,9 +186,7 @@ def _triton_residual_norm_unsupported_reason(
     if residual.dtype not in _supported_half_dtypes():
         return "only FP16 and BF16 are supported"
     if not (
-        residual.is_contiguous()
-        and update.is_contiguous()
-        and weight.is_contiguous()
+        residual.is_contiguous() and update.is_contiguous() and weight.is_contiguous()
     ):
         return "all tensors must be contiguous"
     feature_size = residual.shape[-1]
@@ -209,11 +205,7 @@ def _triton_prefill_unsupported_reason(
         return "CUDA is required"
     if query.dtype not in _supported_half_dtypes():
         return "only FP16 and BF16 are supported"
-    if not (
-        query.is_contiguous()
-        and key.is_contiguous()
-        and value.is_contiguous()
-    ):
+    if not (query.is_contiguous() and key.is_contiguous() and value.is_contiguous()):
         return "all tensors must be contiguous"
     if query.shape[0] != 1:
         return "batch size must be exactly 1"

@@ -28,10 +28,7 @@ def paged_inputs(
     torch.manual_seed(17)
     query = torch.randn(1, 4, 1, head_dim)
     page_count = (past_length + block_size - 1) // block_size
-    keys = tuple(
-        torch.randn(1, 2, block_size, head_dim)
-        for _ in range(page_count)
-    )
+    keys = tuple(torch.randn(1, 2, block_size, head_dim) for _ in range(page_count))
     values = tuple(torch.randn_like(key) for key in keys)
     current_key = torch.randn(1, 2, 1, head_dim)
     current_value = torch.randn_like(current_key)
@@ -89,9 +86,7 @@ class PagedGQADecodeTests(TestCase):
         torch.testing.assert_close(actual, expected)
 
     def test_strict_cuda_mode_rejects_cpu(self) -> None:
-        query, keys, values, current_key, current_value = paged_inputs(
-            head_dim=128
-        )
+        query, keys, values, current_key, current_value = paged_inputs(head_dim=128)
         with self.assertRaisesRegex(RuntimeError, "CUDA"):
             paged_gqa_decode(
                 query,

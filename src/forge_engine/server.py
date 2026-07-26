@@ -10,12 +10,14 @@ import time
 from collections.abc import AsyncIterator, Sequence
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
+from importlib.resources import files
 from typing import Literal, Protocol
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse, PlainTextResponse, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 
+from forge_engine import __version__
 from forge_engine.config import (
     DEFAULT_MODEL_ID,
     SUPPORTED_MODEL_REVISION,
@@ -199,9 +201,7 @@ class SchedulerRuntime:
             try:
                 channel = self._channels[request_id]
             except KeyError as error:
-                raise KeyError(
-                    f"unknown request_id: {request_id}"
-                ) from error
+                raise KeyError(f"unknown request_id: {request_id}") from error
         while True:
             try:
                 item = channel.get_nowait()
@@ -401,6 +401,7 @@ class SchedulerRuntime:
 
 def create_app(runtime: ServingRuntime) -> FastAPI:
     """Build the FastAPI transport around an already loaded runtime."""
+
     @asynccontextmanager
     async def lifespan(_: object) -> AsyncIterator[None]:
         runtime.start()
@@ -411,7 +412,7 @@ def create_app(runtime: ServingRuntime) -> FastAPI:
 
     app = FastAPI(
         title="ForgeEngine",
-        version="0.1.0",
+        version=__version__,
         lifespan=lifespan,
     )
 
@@ -422,6 +423,20 @@ def create_app(runtime: ServingRuntime) -> FastAPI:
     @app.get("/health")
     async def health() -> dict[str, object]:
         return await asyncio.to_thread(runtime.health)
+
+    @app.get("/v1/models")
+    async def models() -> dict[str, object]:
+        return {
+            "object": "list",
+            "data": [
+                {
+                    "id": DEFAULT_MODEL_ID,
+                    "object": "model",
+                    "created": 0,
+                    "owned_by": "Qwen",
+                }
+            ],
+        }
 
     @app.get("/metrics", response_class=PlainTextResponse)
     async def metrics() -> PlainTextResponse:
@@ -514,8 +529,7 @@ def create_app(runtime: ServingRuntime) -> FastAPI:
                             yield _sse_data(
                                 {
                                     "error": {
-                                        "message": view.error
-                                        or "generation failed",
+                                        "message": view.error or "generation failed",
                                         "type": "server_error",
                                     }
                                 }
@@ -599,115 +613,6 @@ def _sse_data(value: dict[str, object]) -> str:
     return f"data: {json.dumps(value, separators=(',', ':'))}\n\n"
 
 
-_BROWSER_CHAT_HTML = """<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>ForgeEngine Chat</title>
-  <style>
-    :root { color-scheme: dark; font-family: Inter, system-ui, sans-serif; }
-    * { box-sizing: border-box; }
-    body { margin: 0; background: #0b0d12; color: #eceff4; }
-    main { width: min(820px, 100%); min-height: 100vh; margin: auto;
-      display: grid; grid-template-rows: auto 1fr auto; padding: 24px; gap: 18px; }
-    header { display: flex; align-items: baseline; justify-content: space-between; }
-    h1 { margin: 0; font-size: 1.2rem; letter-spacing: .02em; }
-    header span { color: #8b94a7; font-size: .8rem; }
-    #messages { overflow-y: auto; display: flex; flex-direction: column;
-      gap: 12px; padding: 8px 0; }
-    .message { max-width: 86%; white-space: pre-wrap; line-height: 1.5;
-      padding: 12px 14px; border-radius: 14px; }
-    .user { align-self: flex-end; background: #3158d4; }
-    .assistant { align-self: flex-start; background: #171b24; border: 1px solid #282e3c; }
-    form { display: grid; grid-template-columns: 1fr auto; gap: 10px; }
-    textarea { resize: none; min-height: 52px; max-height: 180px; padding: 14px;
-      border: 1px solid #303747; border-radius: 12px; background: #121620;
-      color: inherit; font: inherit; outline: none; }
-    textarea:focus { border-color: #6685f2; }
-    button { border: 0; border-radius: 12px; padding: 0 20px; font-weight: 700;
-      color: white; background: #4169e1; cursor: pointer; }
-    button:disabled { opacity: .55; cursor: wait; }
-  </style>
-</head>
-<body>
-<main>
-  <header><h1>ForgeEngine</h1><span>Qwen3 4B · single GPU</span></header>
-  <section id="messages" aria-live="polite"></section>
-  <form id="chat">
-    <textarea id="prompt" placeholder="Message ForgeEngine" required></textarea>
-    <button type="submit">Send</button>
-  </form>
-</main>
-<script>
-const model = "Qwen/Qwen3-4B-Instruct-2507";
-const history = [];
-const form = document.querySelector("#chat");
-const prompt = document.querySelector("#prompt");
-const messages = document.querySelector("#messages");
-const button = form.querySelector("button");
-function bubble(role, text) {
-  const node = document.createElement("div");
-  node.className = `message ${role}`;
-  node.textContent = text;
-  messages.appendChild(node);
-  messages.scrollTop = messages.scrollHeight;
-  return node;
-}
-async function send(text) {
-  history.push({role: "user", content: text});
-  bubble("user", text);
-  const answer = bubble("assistant", "");
-  const response = await fetch("/v1/chat/completions", {
-    method: "POST",
-    headers: {"Content-Type": "application/json"},
-    body: JSON.stringify({model, messages: history, stream: true})
-  });
-  if (!response.ok) throw new Error((await response.text()) || response.statusText);
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
-  let complete = "";
-  while (true) {
-    const {value, done} = await reader.read();
-    buffer += decoder.decode(value || new Uint8Array(), {stream: !done});
-    const frames = buffer.split("\\n\\n");
-    buffer = frames.pop();
-    for (const frame of frames) {
-      const line = frame.split("\\n").find(value => value.startsWith("data: "));
-      if (!line) continue;
-      const data = line.slice(6);
-      if (data === "[DONE]") continue;
-      const event = JSON.parse(data);
-      if (event.error) throw new Error(event.error.message);
-      const content = event.choices?.[0]?.delta?.content;
-      if (content) {
-        complete += content;
-        answer.textContent = complete;
-        messages.scrollTop = messages.scrollHeight;
-      }
-    }
-    if (done) break;
-  }
-  history.push({role: "assistant", content: complete});
-}
-form.addEventListener("submit", async event => {
-  event.preventDefault();
-  const text = prompt.value.trim();
-  if (!text) return;
-  prompt.value = "";
-  button.disabled = true;
-  try { await send(text); }
-  catch (error) { bubble("assistant", `Error: ${error.message}`); }
-  finally { button.disabled = false; prompt.focus(); }
-});
-prompt.addEventListener("keydown", event => {
-  if (event.key === "Enter" && !event.shiftKey) {
-    event.preventDefault();
-    form.requestSubmit();
-  }
-});
-</script>
-</body>
-</html>
-"""
+_BROWSER_CHAT_HTML = (
+    files("forge_engine").joinpath("static/index.html").read_text(encoding="utf-8")
+)

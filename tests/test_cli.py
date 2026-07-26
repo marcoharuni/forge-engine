@@ -7,6 +7,7 @@ from io import StringIO
 from unittest import TestCase
 from unittest.mock import patch
 
+from forge_engine import __version__
 from forge_engine.cli import build_parser, main
 from forge_engine.config import EngineConfig
 from forge_engine.scheduler import SchedulerConfig
@@ -30,6 +31,47 @@ class FakeEngine:
 
 class CLITests(TestCase):
     """Command-line behavior."""
+
+    def test_version_reports_package_metadata(self) -> None:
+        """The top-level version flag uses installed package metadata."""
+        output = StringIO()
+        with (
+            redirect_stdout(output),
+            self.assertRaises(SystemExit) as raised,
+        ):
+            main(["--version"])
+
+        self.assertEqual(raised.exception.code, 0)
+        self.assertEqual(output.getvalue().strip(), f"forge-engine {__version__}")
+
+    def test_doctor_reports_concise_environment(self) -> None:
+        """Diagnostics run without loading model weights."""
+        output = StringIO()
+        with redirect_stdout(output):
+            result = main(["doctor"])
+
+        self.assertEqual(result, 0)
+        fields = {
+            line.split("=", maxsplit=1)[0] for line in output.getvalue().splitlines()
+        }
+        self.assertEqual(
+            fields,
+            {
+                "forge_engine_version",
+                "python_version",
+                "pytorch_version",
+                "cuda_available",
+                "gpu_name",
+                "compute_capability",
+                "bf16_supported",
+                "cuda_toolkit_available",
+                "g++_available",
+                "ninja_available",
+                "hf_home",
+                "model",
+                "model_revision",
+            },
+        )
 
     def test_chat_rejects_arbitrary_model_selection(self) -> None:
         """The CLI exposes no option for loading an unsupported model."""

@@ -1,6 +1,6 @@
 # Kernel implementation and evidence
 
-M7 keeps three low-level paths separate: one small Triton fusion is integrated,
+ForgeEngine keeps three low-level paths separate: one small Triton fusion is integrated,
 one Triton attention kernel is a restricted lab, and one CUDA C++ paged decode
 kernel is integrated. The CuTe DSL experiment remains an optional H100/B200
 lab. Every path has a readable PyTorch reference and rejects unsupported
@@ -61,18 +61,18 @@ Generated-code observations:
 Run the required L4 acceptance:
 
 ```bash
-uv run --extra dev modal run tools/modal_l4_validate_m7.py
+uv run --extra dev modal run tools/validate_l4.py
 ```
 
 The command runs the complete CPU-safe suite, strict BF16 numerical comparisons,
 strict real-model integration, synchronized CUDA-event benchmarks, automatic
-fallback checks, and PTX/SASS inspection. The accepted run printed
-`M7_ACCEPTANCE=PASS`.
+fallback checks, serving evidence, and PTX/SASS inspection. A successful run
+prints `L4_ACCEPTANCE=PASS`.
 
 Run the optional CuTe hardware lab on an H100:
 
 ```bash
-uv run --extra dev modal run tools/modal_h100_validate_cute_m7.py
+uv run --extra dev modal run tools/validate_cute_h100.py
 ```
 
 That command installs the optional CuTe dependency only in its dedicated image,

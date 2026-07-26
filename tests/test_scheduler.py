@@ -185,9 +185,7 @@ class SchedulerTests(TestCase):
         all_events = first_events + second_events + remaining_events
         outputs = {
             request_id: "".join(
-                event.text
-                for event in all_events
-                if event.request_id == request_id
+                event.text for event in all_events if event.request_id == request_id
             )
             for request_id in ("alpha", "beta", "gamma")
         }

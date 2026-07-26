@@ -63,11 +63,7 @@ class ContiguousKVCache:
     @property
     def layer_count(self) -> int:
         """Return the fixed or discovered number of decoder layers."""
-        return (
-            self._layer_count
-            if self._layer_count is not None
-            else len(self._layers)
-        )
+        return self._layer_count if self._layer_count is not None else len(self._layers)
 
     @property
     def empty(self) -> bool:
@@ -88,8 +84,7 @@ class ContiguousKVCache:
             self._layer_count = len(layers)
         elif len(layers) != self._layer_count:
             raise ValueError(
-                f"cache has {len(layers)} layers; "
-                f"expected {self._layer_count}"
+                f"cache has {len(layers)} layers; expected {self._layer_count}"
             )
 
         normalized: list[CacheLayer] = []
@@ -102,14 +97,10 @@ class ContiguousKVCache:
                     f"cache layer {index} must contain exactly key and value"
                 )
             key, value = layer
-            if getattr(key, "ndim", None) != 4 or getattr(
-                value, "ndim", None
-            ) != 4:
+            if getattr(key, "ndim", None) != 4 or getattr(value, "ndim", None) != 4:
                 raise ValueError(f"cache layer {index} tensors must be rank four")
             if key.shape != value.shape:
-                raise ValueError(
-                    f"cache layer {index} key/value shapes must match"
-                )
+                raise ValueError(f"cache layer {index} key/value shapes must match")
             if key.shape[0] < 1 or key.shape[1] < 1 or key.shape[-1] < 1:
                 raise ValueError(f"cache layer {index} has an invalid shape")
             current_length = key.shape[-2]
@@ -120,9 +111,7 @@ class ContiguousKVCache:
             elif current_length != sequence_length:
                 raise ValueError("all cache layers must share a sequence length")
             if key.dtype != value.dtype or key.device != value.device:
-                raise ValueError(
-                    f"cache layer {index} key/value metadata must match"
-                )
+                raise ValueError(f"cache layer {index} key/value metadata must match")
             is_floating = getattr(key, "is_floating_point", None)
             if not callable(is_floating) or not is_floating():
                 raise ValueError(f"cache layer {index} must be floating point")
@@ -432,9 +421,7 @@ class PagedKVCache:
             raise ValueError("cannot decode with an empty paged cache")
         if not 0 <= layer_index < self._layer_count:
             raise IndexError("paged cache layer index is out of range")
-        blocks = tuple(
-            self._pool.block(block_id) for block_id in self._block_table
-        )
+        blocks = tuple(self._pool.block(block_id) for block_id in self._block_table)
         return PagedLayerView(
             keys=tuple(block.keys[layer_index] for block in blocks),
             values=tuple(block.values[layer_index] for block in blocks),
@@ -486,9 +473,9 @@ class PagedKVCache:
         destination_end = destination_offset + count
         source_end = source_start + count
         for layer_index, (key, value) in enumerate(layers):
-            block.keys[layer_index][
-                :, :, destination_offset:destination_end, :
-            ].copy_(key[:, :, source_start:source_end, :])
+            block.keys[layer_index][:, :, destination_offset:destination_end, :].copy_(
+                key[:, :, source_start:source_end, :]
+            )
             block.values[layer_index][
                 :, :, destination_offset:destination_end, :
             ].copy_(value[:, :, source_start:source_end, :])
@@ -505,27 +492,16 @@ def _validated_layers(past_key_values: object) -> tuple[CacheLayer, ...]:
     common_device: object | None = None
     for index, layer in enumerate(layers):
         if not isinstance(layer, (tuple, list)) or len(layer) != 2:
-            raise ValueError(
-                f"cache layer {index} must contain exactly key and value"
-            )
+            raise ValueError(f"cache layer {index} must contain exactly key and value")
         key, value = layer
-        if getattr(key, "ndim", None) != 4 or getattr(
-            value, "ndim", None
-        ) != 4:
+        if getattr(key, "ndim", None) != 4 or getattr(value, "ndim", None) != 4:
             raise ValueError(f"cache layer {index} tensors must be rank four")
         if key.shape != value.shape:
             raise ValueError(f"cache layer {index} key/value shapes must match")
-        if (
-            key.shape[0] < 1
-            or key.shape[1] < 1
-            or key.shape[2] < 1
-            or key.shape[3] < 1
-        ):
+        if key.shape[0] < 1 or key.shape[1] < 1 or key.shape[2] < 1 or key.shape[3] < 1:
             raise ValueError(f"cache layer {index} has an invalid shape")
         if key.dtype != value.dtype or key.device != value.device:
-            raise ValueError(
-                f"cache layer {index} key/value metadata must match"
-            )
+            raise ValueError(f"cache layer {index} key/value metadata must match")
         if not key.is_floating_point() or not value.is_floating_point():
             raise ValueError(f"cache layer {index} must be floating point")
         if common_dtype is None:

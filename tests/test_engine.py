@@ -88,16 +88,12 @@ class FakeTensor:
         shape: list[int] = []
         for dimension, size in enumerate(self.shape):
             selector = (
-                selectors[dimension]
-                if dimension < len(selectors)
-                else slice(None)
+                selectors[dimension] if dimension < len(selectors) else slice(None)
             )
             if isinstance(selector, int):
                 continue
             if not isinstance(selector, slice):
-                raise AssertionError(
-                    f"unsupported fake selector: {selector!r}"
-                )
+                raise AssertionError(f"unsupported fake selector: {selector!r}")
             start, stop, step = selector.indices(size)
             shape.append(len(range(start, stop, step)))
         return FakeTensor(
@@ -273,6 +269,7 @@ def fake_torch_module(oom_error: type[BaseException] = RuntimeError) -> ModuleTy
     fake_torch.ones = ones
     fake_torch.cat = cat
     fake_torch.empty = empty
+
     @contextmanager
     def inference_mode() -> object:
         yield
@@ -481,9 +478,7 @@ class EngineTests(TestCase):
         )
 
         with patch.dict(sys.modules, {"torch": fake_torch_module()}):
-            fragments = list(
-                engine.stream([{"role": "user", "content": "Hi"}])
-            )
+            fragments = list(engine.stream([{"role": "user", "content": "Hi"}]))
 
         self.assertEqual(fragments, ["Hel"])
 
@@ -497,9 +492,7 @@ class EngineTests(TestCase):
         )
 
         with patch.dict(sys.modules, {"torch": fake_torch_module()}):
-            fragments = list(
-                engine.stream([{"role": "user", "content": "Hi"}])
-            )
+            fragments = list(engine.stream([{"role": "user", "content": "Hi"}]))
 
         self.assertEqual(fragments, ["Hello"])
         self.assertEqual(len(model.calls), 1)

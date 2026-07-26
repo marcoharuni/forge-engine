@@ -30,9 +30,7 @@ class FakeServingRuntime:
         self.started = 0
         self.stopped = 0
         self.cancelled: list[str] = []
-        self.submissions: list[
-            tuple[list[dict[str, str]], SamplingParams]
-        ] = []
+        self.submissions: list[tuple[list[dict[str, str]], SamplingParams]] = []
 
     def start(self) -> None:
         self.started += 1
@@ -176,9 +174,7 @@ class SchedulerRuntimeTests(TestCase):
             ]
 
             async def collect(request_id: str) -> list[StreamEvent]:
-                return [
-                    event async for event in runtime.stream(request_id)
-                ]
+                return [event async for event in runtime.stream(request_id)]
 
             async def collect_all() -> list[list[StreamEvent]]:
                 return await asyncio.gather(
@@ -191,10 +187,7 @@ class SchedulerRuntimeTests(TestCase):
                 [["done:req-1"], ["done:req-2"]],
             )
             self.assertTrue(
-                all(
-                    stream[-1].status is RequestStatus.FINISHED
-                    for stream in streams
-                )
+                all(stream[-1].status is RequestStatus.FINISHED for stream in streams)
             )
             self.assertEqual(runtime.health()["status"], "ok")
             metrics = runtime.metrics()
@@ -233,9 +226,7 @@ class ServerTests(TestCase):
             ) as response:
                 self.assertEqual(response.status_code, 200)
                 self.assertTrue(
-                    response.headers["content-type"].startswith(
-                        "text/event-stream"
-                    )
+                    response.headers["content-type"].startswith("text/event-stream")
                 )
                 self.assertEqual(
                     response.headers["x-forge-request-id"],
@@ -255,15 +246,12 @@ class ServerTests(TestCase):
         )
         self.assertEqual(
             "".join(
-                chunk["choices"][0]["delta"].get("content", "")
-                for chunk in chunks
+                chunk["choices"][0]["delta"].get("content", "") for chunk in chunks
             ),
             "Hello world",
         )
         self.assertEqual(chunks[-1]["choices"][0]["finish_reason"], "stop")
-        self.assertTrue(
-            all(chunk["model"] == DEFAULT_MODEL_ID for chunk in chunks)
-        )
+        self.assertTrue(all(chunk["model"] == DEFAULT_MODEL_ID for chunk in chunks))
         self.assertEqual(
             runtime.submissions[0][0],
             [{"role": "user", "content": "Hi"}],
@@ -293,6 +281,7 @@ class ServerTests(TestCase):
             health = client.get("/health")
             metrics = client.get("/metrics")
             browser = client.get("/")
+            models = client.get("/v1/models")
 
         self.assertEqual(health.status_code, 200)
         self.assertEqual(health.json()["model"], DEFAULT_MODEL_ID)
@@ -306,6 +295,19 @@ class ServerTests(TestCase):
         self.assertEqual(browser.status_code, 200)
         self.assertIn("ForgeEngine Chat", browser.text)
         self.assertIn("/v1/chat/completions", browser.text)
+        self.assertEqual(models.status_code, 200)
+        self.assertEqual(models.json()["object"], "list")
+        self.assertEqual(
+            models.json()["data"],
+            [
+                {
+                    "id": DEFAULT_MODEL_ID,
+                    "object": "model",
+                    "created": 0,
+                    "owned_by": "Qwen",
+                }
+            ],
+        )
 
     def test_invalid_requests_are_rejected_before_submission(self) -> None:
         runtime = FakeServingRuntime()

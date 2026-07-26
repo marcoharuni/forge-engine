@@ -81,4 +81,4 @@ Complete milestones in order. Do not begin the next milestone until the current 
 - Add architecture diagram, limitations, licenses, and reproducibility instructions.
 - Remove dead code, fake stubs, and unnecessary abstractions.
 
-**Accept when:** every item in `DEFINITION_OF_DONE.md` is checked and `v0.1.0` is runnable.
+**Accept when:** every item in `release-checklist.md` is checked and `v0.1.0` is runnable.

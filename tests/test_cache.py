@@ -7,8 +7,8 @@ from unittest import TestCase
 import torch
 
 from forge_engine.cache import (
-    KVCacheCapacityError,
     ContiguousKVCache,
+    KVCacheCapacityError,
     PagedKVBlockPool,
     PagedKVCache,
 )

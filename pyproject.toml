@@ -9,6 +9,7 @@ description = "A small, readable, single-GPU inference engine for Qwen."
 readme = "README.md"
 requires-python = ">=3.11"
 license = "Apache-2.0"
+authors = [{ name = "Marco Haruni" }]
 dependencies = [
     "fastapi",
     "huggingface-hub",
@@ -27,10 +28,16 @@ dev = [
     "httpx2",
     "modal",
     "pytest>=8",
+    "ruff>=0.12",
 ]
 cute = [
     "nvidia-cutlass-dsl[cu13]",
 ]
+
+[project.urls]
+Repository = "https://github.com/marcoharuni/forge-engine"
+Documentation = "https://github.com/marcoharuni/forge-engine/tree/main/docs"
+Issues = "https://github.com/marcoharuni/forge-engine/issues"
 
 [[tool.uv.index]]
 name = "pytorch-cpu"
@@ -43,6 +50,16 @@ torch = { index = "pytorch-cpu" }
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+forge_engine = ["static/*.html"]
+
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 88
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I"]

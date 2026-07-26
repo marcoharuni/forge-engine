@@ -122,14 +122,12 @@ def load_model(config: EngineConfig) -> LoadedModel:
     import torch
 
     if not torch.cuda.is_available():
-        raise CUDAUnavailableError(
-            "CUDA is required, but no CUDA device is available."
-        )
+        raise CUDAUnavailableError("CUDA is required, but no CUDA device is available.")
 
     from forge_engine.weights import (
         download_supported_snapshot,
-        load_supported_tokenizer,
         load_staged_model,
+        load_supported_tokenizer,
     )
 
     dtype = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16

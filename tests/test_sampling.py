@@ -88,12 +88,10 @@ class SamplingTests(TestCase):
         right = torch.Generator().manual_seed(731)
 
         left_tokens = [
-            sample_token(logits, params, generator=left).item()
-            for _ in range(16)
+            sample_token(logits, params, generator=left).item() for _ in range(16)
         ]
         right_tokens = [
-            sample_token(logits, params, generator=right).item()
-            for _ in range(16)
+            sample_token(logits, params, generator=right).item() for _ in range(16)
         ]
 
         self.assertEqual(left_tokens, right_tokens)

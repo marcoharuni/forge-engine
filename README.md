@@ -7,10 +7,9 @@
 
 A small, readable, single-GPU inference engine for `Qwen/Qwen3-4B-Instruct-2507`.
 
-ForgeEngine implements the serving path explicitly: staged SafeTensors loading,
-Qwen3 forward execution, prefill and token-by-token decode, paged KV caching,
-continuous batching, sampling, incremental detokenization, and streamed chat.
-It does not call `model.generate` or hide inference behind a pipeline.
+It implements the serving path explicitly: staged SafeTensors loading, Qwen3
+forward execution, prefill and decode, paged KV caching, continuous batching,
+sampling, incremental detokenization, and streamed chat—without `model.generate`.
 
 ## What it implements
 
@@ -22,14 +21,9 @@ It does not call `model.generate` or hide inference behind a pipeline.
 | KV cache | Paged block allocator with deterministic cleanup |
 | Scheduling | Continuous, bounded, token-budgeted batching |
 | Sampling | Greedy, temperature, top-k, top-p, and min-p |
-| Kernels | Triton residual/RMSNorm and CUDA paged GQA |
-| API | Streaming OpenAI-compatible chat subset |
+| Kernels | Triton RMSNorm, CUDA paged GQA, restricted prefill lab |
+| API | Streaming chat subset and `/v1/models` |
 | Clients | Terminal, browser, and Rust SSE/load client |
-
-| Status | Paths |
-| --- | --- |
-| Integrated | Qwen3, paged cache, scheduler, sampling, Triton RMSNorm, CUDA paged GQA, browser, CLI, and SSE |
-| Experimental | Restricted Triton prefill and hardware-gated CuTe SwiGLU |
 
 ## Architecture
 
@@ -45,32 +39,9 @@ flowchart LR
     G --> H[Terminal text or SSE]
 ```
 
-The HTTP event loop never performs CUDA work directly. One scheduler worker
-owns model execution and KV-cache mutation, making admission, batching,
-cancellation, and cleanup easy to trace. See
+The HTTP event loop never performs CUDA work directly. One scheduler worker owns
+model execution and KV-cache mutation. See
 [docs/architecture.md](docs/architecture.md).
-
-## Verified status
-
-The release path was validated on one NVIDIA L4 24 GB using BF16, CUDA 13.0,
-PyTorch `2.13.0+cu130`, Transformers `5.14.1`, and model revision
-`cdbee75f17c01a7cc42f958dc650907174af0554`.
-
-| Measurement | Verified result |
-| --- | ---: |
-| Python tests | 91 passed |
-| Parameter-validation subtests | 16 passed |
-| Rust tests | 3 passed |
-| End-to-end throughput | 19.31 generated tokens/s |
-| Measured concurrency | 4 |
-| Peak process CUDA allocation | 8.88 GB |
-| Failed requests | 0 |
-| Final allocated KV blocks | 0 |
-
-The workload used eight measured requests: six finished and two were
-deliberately cancelled. These numbers describe that exact workload, not general
-capacity or a comparison with another engine. Full methodology and latency
-distributions are in [docs/benchmarks.md](docs/benchmarks.md).
 
 ## Quickstart
 
@@ -89,6 +60,7 @@ uv pip install --no-deps .
 
 export HF_HOME="$PWD/.hf-cache"
 python -c "import torch; assert torch.cuda.is_available(); print(torch.cuda.get_device_name(0))"
+forge-engine doctor
 forge-engine chat --max-new-tokens 256
 ```
 
@@ -101,6 +73,9 @@ Start the server:
 ```bash
 forge-engine serve --host 127.0.0.1 --port 8000
 ```
+
+> ForgeEngine has no authentication or TLS. Keep it bound to `127.0.0.1` unless
+> it is behind a trusted reverse proxy.
 
 Open `http://127.0.0.1:8000` for browser chat, or send a streaming request:
 
@@ -115,32 +90,30 @@ curl -N http://127.0.0.1:8000/v1/chat/completions \
   }'
 ```
 
-Health and Prometheus metrics are available at `/health` and `/metrics`.
+Health, metrics, and model discovery are available at `/health`, `/metrics`,
+and `/v1/models`.
 
-## Docker
+## Verified L4 results
 
-Docker requires the NVIDIA Container Toolkit:
+The release path was validated on one NVIDIA L4 24 GB using BF16, CUDA 13.0,
+PyTorch `2.13.0+cu130`, Transformers `5.14.1`, and model revision
+`cdbee75f17c01a7cc42f958dc650907174af0554`.
+Other NVIDIA GPUs are not currently validated.
 
-```bash
-docker build --pull -t forge-engine:0.1.0 .
-docker run --rm --gpus all \
-  -p 8000:8000 \
-  -v forge-hf-cache:/cache \
-  forge-engine:0.1.0
-```
+| Measurement | Verified result |
+| --- | ---: |
+| Python tests | 91 passed |
+| Parameter-validation subtests | 16 passed |
+| Rust tests | 3 passed |
+| End-to-end throughput | 19.31 generated tokens/s |
+| Measured concurrency | 4 |
+| Peak process CUDA allocation | 8.88 GB |
+| Failed requests | 0 |
+| Final allocated KV blocks | 0 |
 
-The actual Dockerfile passed health, CUDA, pinned-model, SSE chat, error-log,
-and final KV-cleanup checks on an NVIDIA L4.
-
-## Repository structure
-
-```text
-src/forge_engine/  model, cache, scheduler, kernels, server, and CLI
-tests/             CPU-safe numerical and behavior tests
-rust/streamer/     asynchronous SSE client and load generator
-tools/             real-GPU and Docker validation commands
-docs/              architecture, benchmarks, kernels, and validation
-```
+The eight-request workload had six finishes and two deliberate cancellations.
+These are workload-specific results, not a general capacity claim. See
+[docs/benchmarks.md](docs/benchmarks.md) for methodology and latency data.
 
 ## Supported scope
 
@@ -161,7 +134,6 @@ docs/              architecture, benchmarks, kernels, and validation
 - [Validation](docs/validation.md)
 - [Development](docs/development.md)
 - [Rust client](rust/streamer/README.md)
-- [Roadmap](ROADMAP.md) and [definition of done](DEFINITION_OF_DONE.md)
 
 ## License
 

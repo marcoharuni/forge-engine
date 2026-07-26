@@ -28,9 +28,7 @@ EXPECTED_TOKENIZER_SIZE = 151_669
 EXPECTED_PAD_TOKEN_ID = 151_643
 EXPECTED_IM_START_TOKEN_ID = 151_644
 EXPECTED_EOS_TOKEN_ID = 151_645
-EXPECTED_CHAT_RENDER = (
-    "<|im_start|>user\nping<|im_end|>\n<|im_start|>assistant\n"
-)
+EXPECTED_CHAT_RENDER = "<|im_start|>user\nping<|im_end|>\n<|im_start|>assistant\n"
 
 
 @dataclass(frozen=True, slots=True)
@@ -93,8 +91,7 @@ def load_supported_tokenizer(
     for name, expected in expected_config.items():
         if raw.get(name) != expected:
             raise ValueError(
-                f"unsupported tokenizer {name}={raw.get(name)!r}; "
-                f"expected {expected!r}"
+                f"unsupported tokenizer {name}={raw.get(name)!r}; expected {expected!r}"
             )
     if not isinstance(raw.get("chat_template"), str):
         raise ValueError("tokenizer chat_template must be a string")
@@ -118,8 +115,7 @@ def load_supported_tokenizer(
     for name, expected in expected_facts.items():
         if facts[name] != expected:
             raise ValueError(
-                f"unsupported tokenizer {name}={facts[name]!r}; "
-                f"expected {expected!r}"
+                f"unsupported tokenizer {name}={facts[name]!r}; expected {expected!r}"
             )
     rendered = tokenizer.apply_chat_template(
         [{"role": "user", "content": "ping"}],
@@ -250,8 +246,7 @@ def load_safetensors_into_model(
 def parameter_bytes(model: nn.Module) -> int:
     """Return allocated parameter bytes without double-counting tensors."""
     return sum(
-        parameter.numel() * parameter.element_size()
-        for parameter in model.parameters()
+        parameter.numel() * parameter.element_size() for parameter in model.parameters()
     )
 
 

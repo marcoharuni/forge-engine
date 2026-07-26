@@ -27,7 +27,7 @@ RUN python3 -m venv /opt/forge-venv \
     && python -m pip install --no-cache-dir -r requirements-gpu.txt \
     && python -m pip install --no-cache-dir --no-deps .
 
-RUN python -c "import forge_engine; assert forge_engine.__version__ == '0.1.0'"
+RUN forge-engine --version
 
 EXPOSE 8000
 

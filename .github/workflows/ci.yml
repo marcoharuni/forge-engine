@@ -29,6 +29,15 @@ jobs:
       - name: Python tests
         run: uv run --frozen --extra dev python -m pytest -q
 
+      - name: Python compile check
+        run: uv run --frozen --extra dev python -m compileall -q src tests tools
+
+      - name: Ruff format
+        run: uv run --frozen --extra dev ruff format --check .
+
+      - name: Ruff lint
+        run: uv run --frozen --extra dev ruff check .
+
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:

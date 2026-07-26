@@ -20,9 +20,7 @@ class CuteSwiGLUTests(TestCase):
         inputs = torch.randn(3, 8)
         gate = torch.randn(12, 8)
         up = torch.randn(12, 8)
-        expected = (
-            torch.nn.functional.silu(inputs @ gate.T) * (inputs @ up.T)
-        )
+        expected = torch.nn.functional.silu(inputs @ gate.T) * (inputs @ up.T)
 
         actual = gate_up_swiglu_reference(inputs, gate, up)
 
